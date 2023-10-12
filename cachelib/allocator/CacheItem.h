@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <utility>
+#include <bitset>
 
 #include "cachelib/allocator/Cache.h"
 #include "cachelib/allocator/CacheChainedItemIterator.h"
@@ -420,6 +421,27 @@ class CACHELIB_PACKED_ATTR CacheItem {
  public:
   // Hook for the access type
   AccessHook accessHook_;
+
+  // for Eviction controller
+  uint32_t past_timestamp;
+  uint32_t access_in_windows;
+  bool get_is_sampled() {
+    return past_timestamp & 1;
+  }
+  bool get_is_reinserted() const {
+    return past_timestamp & 2;
+  }
+  void set_is_reinserted(bool val) {
+    past_timestamp = past_timestamp - (past_timestamp&2);
+    past_timestamp = past_timestamp | (val << 1);
+  }
+  void set_is_sampled(bool val) {
+    past_timestamp = past_timestamp - (past_timestamp&1);
+    past_timestamp = past_timestamp | val;
+  }
+  void set_past_timestamp(uint32_t past_timestamp_) {
+    past_timestamp = past_timestamp_ - (past_timestamp_&3);
+  }
 
   using AccessContainer = typename CacheTrait::AccessType::template Container<
       Item,

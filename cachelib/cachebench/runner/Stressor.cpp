@@ -156,7 +156,11 @@ std::unique_ptr<GeneratorBase> makeGenerator(const StressorConfig& config) {
 } // namespace
 
 std::unique_ptr<Stressor> Stressor::makeStressor(
-    const CacheConfig& cacheConfig, const StressorConfig& stressorConfig) {
+    const CacheConfig& cacheConfig, const StressorConfig& stressorConfig_) {
+  StressorConfig stressorConfig = stressorConfig_;
+    stressorConfig.allocFactor = cacheConfig.allocFactor;
+    stressorConfig.maxAllocSize = cacheConfig.maxAllocSize;
+    stressorConfig.minAllocSize = cacheConfig.minAllocSize;
   if (stressorConfig.name == "high_refcount") {
     return std::make_unique<HighRefcountStressor>(cacheConfig,
                                                   stressorConfig.numOps);

@@ -49,6 +49,7 @@
 #include "cachelib/allocator/CacheTraits.h"
 #include "cachelib/allocator/CacheVersion.h"
 #include "cachelib/allocator/ChainedAllocs.h"
+#include "cachelib/allocator/EvictionController.h"
 #include "cachelib/allocator/ICompactCache.h"
 #include "cachelib/allocator/KAllocation.h"
 #include "cachelib/allocator/MemoryMonitor.h"
@@ -1323,9 +1324,10 @@ class CacheAllocator : public CacheBase {
   static_assert((sizeof(typename MMType::template Hook<Item>) +
                  sizeof(typename AccessType::template Hook<Item>) +
                  sizeof(typename RefcountWithFlags::Value) + sizeof(uint32_t) +
-                 sizeof(uint32_t) + sizeof(KAllocation)) == sizeof(Item),
+                 sizeof(uint32_t) + sizeof(KAllocation) + 
+                 sizeof(uint32_t) * 2)  == sizeof(Item),
                 "vtable overhead");
-  static_assert(32 == sizeof(Item), "item overhead is 32 bytes");
+    static_assert(40 == sizeof(Item), "item overhead is 32 bytes + 8 bytes Meta");
 
   // make sure there is no overhead in ChainedItem on top of a regular Item
   static_assert(sizeof(Item) == sizeof(ChainedItem),
@@ -1697,7 +1699,8 @@ class CacheAllocator : public CacheBase {
   RemoveRes removeImpl(HashedKey hk,
                        Item& it,
                        DeleteTombStoneGuard tombstone,
-                       bool removeFromNvm = true,
+                       bool removeFromNvm = true, 
+                       // warning[EC]: removeFromNvm = false; advanceIteratorAndTryEvictRegularItem
                        bool recordApiEvent = true);
 
   // Must be called by the thread which called markForEviction and
@@ -2081,6 +2084,42 @@ class CacheAllocator : public CacheBase {
   }
 
   // BEGIN private members
+  
+  void createEvictionControllers(const PoolId pid);
+  
+  void render();
+
+  double allocate_time;
+  double insert_time;
+  double find_time;
+  double release_time;
+  double eviction_time;
+  double reinsertion_time;
+  double enqueue_time;
+  double dequeue_time;
+  double meta_update_time;
+  double prediction_time;
+  double training_time;
+  uint32_t n_allocate;
+  uint32_t n_insert;
+  uint32_t n_predict;
+  uint32_t average_skip;
+  uint32_t n_find;
+  uint32_t n_release;
+  uint32_t n_eviction;
+  uint32_t n_reinsertion;
+  uint32_t n_reinsertion_queue;
+  uint32_t n_eviction_queue;
+  uint32_t n_evict_out_cache;
+  uint32_t n_evict_empty;
+  std::atomic<uint32_t> n_miss;
+  // a filter per pool per class to decide whether an eviction candidate should be reinserted
+  std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
+  int use_eviction_control = 0;
+  int debug_mode = 0;
+  int cacheParsedCnt = 0;
+  std::atomic<uint32_t> enqueue_token = 1;
+  std::chrono::system_clock::time_point timePeriod;
 
   // Whether the memory allocator for this cache allocator was created on shared
   // memory. The hash table, chained item hash table etc is also created on

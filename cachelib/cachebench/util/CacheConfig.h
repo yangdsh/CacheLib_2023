@@ -65,6 +65,9 @@ struct CacheConfig : public JSONConfig {
   // by defaullt, lru allocator. can be set to LRU-2Q.
   std::string allocator{"LRU"};
 
+  bool useEvictionControl{false};
+  std::string MLConfig;
+
   // if set, we will persist the cache across cachebench runs. The directory
   // is used to store some metadata about the cache.
   std::string cacheDir{""};

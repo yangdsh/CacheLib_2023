@@ -303,6 +303,26 @@ class MMLru {
         Iterator::resetToBegin();
       }
 
+      void want_main_iter() {
+        return;
+      }
+
+      void want_tiny_iter() {
+        return;
+      }
+
+      void unwant_main_iter() {
+        return;
+      }
+
+      void unwant_tiny_iter() {
+        return;
+      }
+
+      bool evictMain() {
+        return true;
+      }
+
      private:
       // private because it's easy to misuse and cause deadlock for MMLru
       LockedIterator& operator=(LockedIterator&&) noexcept = default;
@@ -393,6 +413,24 @@ class MMLru {
       return lruMutex_->lock_combine([this]() { return lru_.size(); });
     }
 
+    // returns the number of elements in the container
+    size_t sizeLocked() const noexcept {
+      return lru_.size();
+    }
+
+    void setECMode() {
+      return;
+    }
+
+    void moveToHeadLocked(T& node) noexcept;
+
+    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
+
+    // remove node from lru and adjust insertion points
+    // @param node          node to remove
+    void removeLocked(T& node);
+    
+
     // Returns the eviction age stats. See CacheStats.h for details
     EvictionAgeStat getEvictionAgeStat(uint64_t projectedLength) const noexcept;
 
@@ -433,10 +471,6 @@ class MMLru {
     // We need to ensure the insertionPoint_ is set to the correct node
     // to maintain the tailSize_, for the next insertion.
     void updateLruInsertionPoint() noexcept;
-
-    // remove node from lru and adjust insertion points
-    // @param node          node to remove
-    void removeLocked(T& node);
 
     // Bit MM_BIT_0 is used to record if the item is in tail. This
     // is used to implement LRU insertion points

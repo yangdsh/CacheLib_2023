@@ -69,6 +69,8 @@ class WorkloadGenerator : public GeneratorBase {
   std::vector<std::uniform_int_distribution<uint32_t>> keyGenForPool_;
 
   std::vector<WorkloadDistribution> workloadDist_;
+
+  // std::ofstream gen_trace_file{"/nfs2/gen.csv"};
 };
 } // namespace cachebench
 } // namespace cachelib

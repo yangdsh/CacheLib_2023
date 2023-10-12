@@ -147,7 +147,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
   // full (producer) or empty (consumer).
   // We use polling with the delay since the ProducerConsumerQueue does not
   // support blocking read or writes with a timeout
-  static constexpr uint64_t checkIntervalUs_ = 100;
+  static constexpr uint64_t checkIntervalUs_ = 1;
   static constexpr size_t kMaxRequests = 10000;
 
   using ReqQueue = folly::ProducerConsumerQueue<std::unique_ptr<ReqWrapper>>;
@@ -314,51 +314,56 @@ inline void KVReplayGenerator::genRequests() {
       break;
     }
 
-    for (size_t keySuffix = 0; keySuffix < ampFactor_; keySuffix++) {
-      std::unique_ptr<ReqWrapper> req;
-      // Use a copy of ReqWrapper except for the last one
-      if (keySuffix == ampFactor_ - 1) {
-        req.swap(reqWrapper);
-      } else {
-        req = std::make_unique<ReqWrapper>(*reqWrapper);
-      }
-
-      if (ampFactor_ > 1) {
-        // Replace the last 4 bytes with thread Id of 4 decimal chars. In doing
-        // so, keep at least 10B from the key for uniqueness; 10B is the max
-        // number of decimal digits for uint32_t which is used to encode the key
-        if (req->key_.size() > 10) {
-          // trunkcate the key
-          size_t newSize = std::max<size_t>(req->key_.size() - 4, 10u);
-          req->key_.resize(newSize, '0');
-        }
-        req->key_.append(folly::sformat("{:04d}", keySuffix));
-      }
-
-      auto shardId = getShard(req->req_.key);
+    std::unique_ptr<ReqWrapper> req;
+    req.swap(reqWrapper);
+    auto shardId = getShard(req->req_.key); //, req->key_.size() + req->sizes_[0]);
+    while(1) {
       auto& stressorCtx = getStressorCtx(shardId);
       auto& reqQ = *stressorCtx.reqQueue_;
 
-      while (!reqQ.write(std::move(req)) && !stressorCtx.isFinished() &&
+      if (!reqQ.write(std::move(req)) && !stressorCtx.isFinished() &&
              !shouldShutdown()) {
         // ProducerConsumerQueue does not support blocking, so use sleep
         std::this_thread::sleep_for(
             std::chrono::microseconds{checkIntervalUs_});
-      }
+        // shardId = (shardId + 1) % config_.numThreads;
+      } else break;
     }
   }
 
   setEOF();
 }
 
+thread_local int keySuffixLocal = 100;
+thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
+
 const Request& KVReplayGenerator::getReq(uint8_t,
                                          std::mt19937_64&,
                                          std::optional<uint64_t>) {
   std::unique_ptr<ReqWrapper> reqWrapper;
-
   auto& stressorCtx = getStressorCtx();
   auto& reqQ = *stressorCtx.reqQueue_;
   auto& resubmitQueue = stressorCtx.resubmitQueue_;
+
+  if (ampFactor_ > 1 && keySuffixLocal < ampFactor_) {
+    if (!resubmitQueue.empty()) {
+      reqWrapper.swap(resubmitQueue.front());
+      resubmitQueue.pop();
+    } else {
+      keySuffixLocal += 1;
+      // Use a copy of ReqWrapper except for the last one
+      reqWrapper = std::make_unique<ReqWrapper>(*curReqWrapper);
+
+      if (reqWrapper->req_.key.size() > 10) {
+        // trunkcate the key
+        size_t newSize = std::max<size_t>(reqWrapper->req_.key.size() - 4, 10u);
+        reqWrapper->req_.key.resize(newSize, '0');
+      }
+      reqWrapper->req_.key.append(folly::sformat("{:04d}", keySuffixLocal));
+    }
+    ReqWrapper* reqPtr = reqWrapper.release();
+    return reqPtr->req_;
+  }
 
   while (resubmitQueue.empty() && !reqQ.read(reqWrapper)) {
     if (resubmitQueue.empty() && isEOF()) {
@@ -368,12 +373,16 @@ const Request& KVReplayGenerator::getReq(uint8_t,
     std::this_thread::sleep_for(std::chrono::microseconds{checkIntervalUs_});
   }
 
-  if (!reqWrapper) {
+  if (!resubmitQueue.empty() && !reqWrapper) {
     XCHECK(!resubmitQueue.empty());
     reqWrapper.swap(resubmitQueue.front());
     resubmitQueue.pop();
   }
-
+  else if (ampFactor_ > 1) {
+    keySuffixLocal = 1;
+    curReqWrapper.reset();
+    curReqWrapper = std::make_unique<ReqWrapper>(*reqWrapper);
+  }
   ReqWrapper* reqPtr = reqWrapper.release();
   return reqPtr->req_;
 }

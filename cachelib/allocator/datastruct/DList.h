@@ -144,6 +144,8 @@ class DList {
   // @param node node to be linked at the head
   void linkAtHead(T& node) noexcept;
 
+  void linkBatchAtHead(T& nodeHead, T& nodeTail, int length) noexcept;
+
   // Links the passed node to the tail of the double linked list
   // @param node node to be linked at the tail
   void linkAtTail(T& node) noexcept;
@@ -168,6 +170,8 @@ class DList {
   // moves a node that belongs to the linked list to the head of the linked
   // list.
   void moveToHead(T& node) noexcept;
+
+  void moveBatchToHead(T& nodeHead, T& nodeTail, int length) noexcept;
 
   T* getHead() const noexcept { return head_; }
   T* getTail() const noexcept { return tail_; }

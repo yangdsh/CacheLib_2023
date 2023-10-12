@@ -426,6 +426,26 @@ class MM2Q {
         Iterator::resetToBegin();
       }
 
+      void want_main_iter() {
+        return;
+      }
+
+      void want_tiny_iter() {
+        return;
+      }
+
+      void unwant_main_iter() {
+        return;
+      }
+
+      void unwant_tiny_iter() {
+        return;
+      }
+
+      bool evictMain() {
+        return true;
+      }
+
      private:
       // private because it's easy to misuse and cause deadlock for MM2Q
       LockedIterator& operator=(LockedIterator&&) noexcept = default;
@@ -513,6 +533,18 @@ class MM2Q {
     size_t size() const noexcept {
       return lruMutex_->lock_combine([this]() { return lru_.size(); });
     }
+
+    size_t sizeLocked() const noexcept {
+      return lru_.size();
+    }
+
+    void setECMode() {
+      return;
+    }
+
+    void moveToHeadLocked(T& node) noexcept;
+
+    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
     // Returns the eviction age stats. See CacheStats.h for details
     EvictionAgeStat getEvictionAgeStat(uint64_t projectedLength) const noexcept;

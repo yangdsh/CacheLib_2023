@@ -36,6 +36,25 @@ void DList<T, HookPtr>::linkAtHead(T& node) noexcept {
   size_++;
 }
 
+/* Linked list implemenation */
+template <typename T, DListHook<T> T::*HookPtr>
+void DList<T, HookPtr>::linkBatchAtHead(T& nodeHead, T& nodeTail, int length) noexcept {
+  XDCHECK_NE(reinterpret_cast<uintptr_t>(&nodeHead),
+             reinterpret_cast<uintptr_t>(head_));
+
+  setNext(nodeTail, head_);
+  setPrev(nodeHead, nullptr);
+  // fix the prev ptr of head
+  if (head_ != nullptr) {
+    setPrev(*head_, &nodeTail);
+  }
+  head_ = &nodeHead;
+  if (tail_ == nullptr) {
+    tail_ = &nodeTail;
+  }
+  size_ += length;
+}
+
 template <typename T, DListHook<T> T::*HookPtr>
 void DList<T, HookPtr>::linkAtTail(T& node) noexcept {
   XDCHECK_NE(reinterpret_cast<uintptr_t>(&node),
@@ -145,6 +164,20 @@ void DList<T, HookPtr>::moveToHead(T& node) noexcept {
   }
   unlink(node);
   linkAtHead(node);
+}
+
+template <typename T, DListHook<T> T::*HookPtr>
+void DList<T, HookPtr>::moveBatchToHead(T& nodeHead, T& nodeTail, int length) noexcept {
+  if (&nodeHead == head_) {
+    return;
+  }
+  auto* const prev = getPrev(nodeHead);
+  auto* const next = getNext(nodeTail);
+  tail_ = prev;
+  setNext(*prev, next);
+  size_ -= length;
+
+  linkBatchAtHead(nodeHead, nodeTail, length);
 }
 
 /* Iterator Implementation */

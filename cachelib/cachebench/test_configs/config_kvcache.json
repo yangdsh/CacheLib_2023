@@ -1,0 +1,34 @@
+{
+  "cache_config":
+  {
+    "allocator": "LRU",
+    "useEvictionControl": false,
+    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "cacheSizeMB" : 4096,
+    "poolRebalanceIntervalSec" : 0,
+    "htBucketPower" : 30,
+    "htLockPower" : 20,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "lruRefreshSec": 60,
+    "lruRefreshRatio": 0
+  },
+  "test_config":
+  {
+    "enableLookaside": true,
+    "generator": "replay",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    },    
+    "repeatTraceReplay": false,
+    "repeatOpCount" : false,
+    "onlySetIfMiss" : false,
+    "numOps": 100000000, 
+    "numThreads": 32, 
+    "prepopulateCache": true, 
+    "traceFileNames": [
+      "/nfs2/kvcache_traces_1.csv"
+    ]
+  }
+}

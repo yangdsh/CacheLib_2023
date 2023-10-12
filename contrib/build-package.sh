@@ -247,6 +247,14 @@ case "$1" in
     cmake_custom_params="-DBUILD_SHARED_LIBS=ON"
     ;;
 
+  lightgbm)
+    NAME=lightgbm
+    REPO="--recursive https://github.com/Microsoft/LightGBM"
+    REPODIR=cachelib/external/$NAME
+    SRCDIR=$REPODIR
+    external_git_clone=yes
+    ;;
+
   cachelib)
     NAME=cachelib
     SRCDIR=cachelib
@@ -295,6 +303,7 @@ CMAKE_PREFIX_PATH="$PREFIX/lib/cmake:$PREFIX/lib64/cmake:$PREFIX/lib:$PREFIX/lib
 export CMAKE_PREFIX_PATH
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 export PKG_CONFIG_PATH
+PREFIX="$PWD/opt/cachelib/"
 LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:${LD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH
 PATH="$PREFIX/bin:$PATH"
@@ -315,7 +324,7 @@ if test "$source" ; then
         || die "failed to fetch git repository for '$NAME' in '$SRCDIR'"
     else
       # Clone new repository directory
-      git clone "$REPO" "$REPODIR" \
+      git clone $REPO "$REPODIR" \
         || die "failed to clone git repository $REPO to '$REPODIR'"
     fi
 

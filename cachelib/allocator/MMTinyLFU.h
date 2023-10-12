@@ -419,6 +419,28 @@ class MMTinyLFU {
         mIter_.resetToBegin();
       }
 
+      void want_main_iter() {
+        want_main_iter_ = true;
+        want_tiny_iter_ = false;
+      }
+
+      void unwant_main_iter() {
+        want_main_iter_ = false;
+      }
+
+      void want_tiny_iter() {
+        want_main_iter_ = false;
+        want_tiny_iter_ = true;
+      }
+
+      void unwant_tiny_iter() {
+        want_tiny_iter_ = false;
+      }
+
+      bool evictMain() {
+        return !evictTiny();
+      }
+
      private:
       // private because it's easy to misuse and cause deadlock for MMTinyLFU
       LockedIterator& operator=(LockedIterator&&) noexcept = default;
@@ -443,6 +465,11 @@ class MMTinyLFU {
         if (!tIter_) {
           return false;
         }
+        if (want_tiny_iter_)
+          return true;
+        if (want_main_iter_) {
+          return false;
+        }
         // Since iterators don't change the state of the container, we evict
         // from tiny or main depending on whether the tiny node would be
         // admitted to main cache. If it would be, we evict from main cache,
@@ -459,6 +486,8 @@ class MMTinyLFU {
       ListIterator mIter_;
       // lock protecting the validity of the iterator
       LockHolder l_;
+      bool want_tiny_iter_ = false;
+      bool want_main_iter_ = false;
     };
 
     Config getConfig() const;
@@ -474,6 +503,18 @@ class MMTinyLFU {
       LockHolder l(lruMutex_);
       return lru_.size();
     }
+
+    size_t sizeLocked() const noexcept {
+      return lru_.size();
+    }
+
+    void setECMode() {
+      return;
+    }
+
+    void moveToHeadLocked(T& node) noexcept;
+
+    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
     // reconfigure the MMContainer: update refresh time according to current
     // tail age

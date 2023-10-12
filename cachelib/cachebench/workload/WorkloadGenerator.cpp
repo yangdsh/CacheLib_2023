@@ -54,6 +54,8 @@ const Request& WorkloadGenerator::getReq(uint8_t poolId,
   auto op =
       static_cast<OpType>(workloadDist_[workloadIdx(poolId)].sampleOpDist(gen));
   reqs_[idx].setOp(op);
+  // gen_trace_file << reqs_[idx].key << ' ' << (OpType::kGet == op? "GET": "SET") << ' '
+  //   << *reqs_[idx].sizeBegin << " 1 32" << std::endl;
   return reqs_[idx];
 }
 

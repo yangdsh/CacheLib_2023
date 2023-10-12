@@ -1,0 +1,28 @@
+{
+    "cache_config": {
+      "allocator": "LRU",
+      "cacheSizeMB": 1024, 
+      "useEvictionControl": true,
+      "MLConfig": "batch_size_factor,20,async_mode,1,debug_mode,0,force_run,1,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,n_deltas,0,force_ml_mess_mode,0,ml_mess_mode,0",
+      "poolRebalanceIntervalSec" : 0,
+      "moveOnSlabRelease" : true,
+      "rebalanceMinSlabs" : 2,
+      "rebalanceStrategy": "hits"
+    }, 
+    "test_config":
+    {
+      "enableLookaside": true,
+      "generator": "replay",
+      "wallTimeReplaySpeed_": 10,
+      "wallTimeReplaySpeed": 10,
+      "printToFile": 0,
+      "cachePieceSize": 4194304,
+      "numOps": 12437500,
+      "numThreads": 16,
+      "populateItem": true,
+      "allocFactor": 2,
+      "maxAllocSize": 4194304,
+      "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+      "traceFileName": "/nfs/memc_200m.tr.ant"
+    }
+}

@@ -72,6 +72,33 @@ else()
   target_compile_definitions(cachelib_allocator PRIVATE SKIP_SIZE_VERIFY)
 endif()
 
+find_package(MLPACK REQUIRED)
+include_directories(${MLPACK_INCLUDE_DIRS})
+target_link_libraries(cachelib_allocator PUBLIC ${MLPACK_LIBRARIES})
+SET(GCC_COVERAGE_COMPILE_FLAGS "-fopenmp")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
+
+find_package (Eigen3 3.3 REQUIRED NO_MODULE)
+include_directories(${EIGEN_INCLUDE_DIR})
+target_link_libraries(cachelib_allocator PUBLIC Eigen3::Eigen)
+
+find_package(Boost REQUIRED system serialization)
+include_directories(${Boost_INCLUDE_DIR})
+target_link_libraries(cachelib_allocator PUBLIC ${Boost_LIBRARIES})
+
+set (LIGHTGBM_PATH "LightGBM-NOTFOUND")
+find_path(LIGHTGBM_PATH LightGBM)
+if (NOT LIGHTGBM_PATH)
+    message(FATAL_ERROR "LIGHTGBM_PATH not found")
+endif ()
+target_include_directories(cachelib_allocator PUBLIC ${LIGHTGBM_PATH})
+find_library(LIGHTGBM_LIB _lightgbm)
+message("LIGHTGBM_LIB= ${LIGHTGBM_LIB}")
+if (NOT LIGHTGBM_LIB)
+    message(FATAL_ERROR "LIGHTGBM_LIB not found")
+endif ()
+target_link_libraries(cachelib_allocator PUBLIC ${LIGHTGBM_LIB})
+
 
 install(TARGETS cachelib_allocator
         EXPORT cachelib-exports

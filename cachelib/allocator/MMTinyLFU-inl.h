@@ -176,6 +176,18 @@ void MMTinyLFU::Container<T, HookPtr>::maybePromoteTailLocked() noexcept {
 }
 
 template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>
+void MMTinyLFU::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
+  lru_.getList(getLruType(node)).remove(node);
+  if (getLruType(node) == LruType::Tiny)
+    unmarkTiny(node);
+  lru_.getList(LruType::Main).linkAtHead(node);
+}
+
+template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>
+void MMTinyLFU::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+}
+
+template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>
 bool MMTinyLFU::Container<T, HookPtr>::add(T& node) noexcept {
   const auto currTime = static_cast<Time>(util::getCurrentTimeSec());
   LockHolder l(lruMutex_);

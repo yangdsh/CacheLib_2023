@@ -261,6 +261,8 @@ Cache<Allocator>::Cache(const CacheConfig& config,
   }
 
   allocatorConfig_.cacheName = kCachebenchCacheName;
+  allocatorConfig_.useEvictionControl = config_.useEvictionControl;
+  allocatorConfig_.MLConfig = config_.MLConfig;
 
   bool isRecovered = false;
   if (!allocatorConfig_.cacheDir.empty()) {

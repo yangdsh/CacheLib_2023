@@ -230,6 +230,16 @@ void MMLru::Container<T, HookPtr>::withEvictionIterator(F&& fun) {
 }
 
 template <typename T, MMLru::Hook<T> T::*HookPtr>
+void MMLru::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
+  lru_.moveToHead(node);
+}
+
+template <typename T, MMLru::Hook<T> T::*HookPtr>
+void MMLru::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+  lru_.moveBatchToHead(nodeHead, nodeTail, length);
+}
+
+template <typename T, MMLru::Hook<T> T::*HookPtr>
 void MMLru::Container<T, HookPtr>::ensureNotInsertionPoint(T& node) noexcept {
   // If we are removing the insertion point node, grow tail before we remove
   // so that insertionPoint_ is valid (or nullptr) after removal

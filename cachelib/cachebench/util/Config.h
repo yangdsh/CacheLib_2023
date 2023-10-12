@@ -269,6 +269,10 @@ struct StressorConfig : public JSONConfig {
 
   bool useCombinedLockForIterators{false};
 
+  double allocFactor{1.5};
+  uint64_t maxAllocSize{1024 * 1024};
+  uint64_t minAllocSize{64};
+
   // admission policy for cache.
   std::shared_ptr<StressorAdmPolicy> admPolicy{};
 

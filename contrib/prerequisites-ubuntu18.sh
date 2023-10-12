@@ -41,7 +41,12 @@ sudo apt-get install -y \
   libdwarf-dev \
   libsodium-dev \
   libaio-dev \
-  libnuma-dev
+  libnuma-dev \
+  libopenblas-dev \
+  liblapack-dev \
+  libensmallen-dev \
+  libmlpack-dev \
+  libeigen3-dev
 
 # NOTE:
 # GoogleTest/GoogleMock libraries are available in Ubuntu as

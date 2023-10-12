@@ -414,6 +414,10 @@ class CacheAllocatorConfig {
   // Directory for shared memory related metadata
   std::string cacheDir;
 
+  // use ML Eviction
+  bool useEvictionControl = false;
+  std::string MLConfig;
+
   // if true, uses posix shm; if not, uses sys-v (default)
   bool usePosixShm{false};
 

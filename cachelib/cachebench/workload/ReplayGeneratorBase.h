@@ -89,6 +89,10 @@ class TraceFileStream {
     nextLineFields_.clear();
     folly::split(",", line, nextLineFields_);
     if (nextLineFields_.size() < minNumFields_) {
+      nextLineFields_.clear();
+      folly::split(' ', line, nextLineFields_);
+    }
+    if (nextLineFields_.size() < minNumFields_) {
       XLOG_N_PER_MS(INFO, 10, 1000) << folly::sformat(
           "Error parsing next line \"{}\": shorter than min required fields {}",
           line, minNumFields_);
@@ -292,6 +296,8 @@ class ReplayGeneratorBase : public GeneratorBase {
 
   std::vector<std::string> keys_;
 
+  std::vector<uint64_t> acSizes_;
+
   // Return the shard for the key.
   uint32_t getShard(folly::StringPiece key) {
     if (mode_ == ReplayGeneratorConfig::SerializeMode::strict) {
@@ -301,6 +307,26 @@ class ReplayGeneratorBase : public GeneratorBase {
       // TODO: implement the relaxed mode
       return folly::Random::rand32(numShards_);
     }
+  }
+
+  void calculateClassSizes() {
+    for (uint64_t size = config_.minAllocSize; size < config_.maxAllocSize; size *= config_.allocFactor) {
+      acSizes_.push_back(size);
+    }
+  }
+
+  int getClassId(uint32_t size) noexcept {
+    if (acSizes_.size() == 0)
+      calculateClassSizes();
+    size = size + 40;
+    const auto it = std::lower_bound(acSizes_.begin(), acSizes_.end(), size);
+    return std::distance(acSizes_.begin(), it);
+  }
+
+  // Return the shard for the key.
+  uint32_t getShard(folly::StringPiece key, size_t size) {
+    int classId = getClassId(size);
+    return classId % numShards_;
   }
 };
 

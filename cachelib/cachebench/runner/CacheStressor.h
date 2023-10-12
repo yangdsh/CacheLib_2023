@@ -27,6 +27,8 @@
 #include <memory>
 #include <thread>
 #include <unordered_set>
+#include <sys/syscall.h> 
+#include <sys/resource.h>
 
 #include "cachelib/cachebench/cache/Cache.h"
 #include "cachelib/cachebench/cache/TimeStampTicker.h"
@@ -65,6 +67,10 @@ class CacheStressor : public Stressor {
         wg_(std::move(generator)),
         hardcodedString_(genHardcodedString()),
         endTime_{std::chrono::system_clock::time_point::max()} {
+    maxAllocSize = cacheConfig.maxAllocSize;
+    //** useEvictionController = cacheConfig.useEvictionControl;
+    useNVM = cacheConfig.nvmCacheSizeMB;
+  
     // if either consistency check is enabled or if we want to move
     // items during slab release, we want readers and writers of chained
     // allocs to be synchronized
@@ -305,11 +311,8 @@ class CacheStressor : public Stressor {
         SCOPE_EXIT { throttleFn(); };
           // detect refcount leaks when run in  debug mode.
 #ifndef NDEBUG
-        auto checkCnt = [useCombinedLockForIterators =
-                             config_.useCombinedLockForIterators](int cnt) {
-          // if useCombinedLockForIterators is set handle count can be modified
-          // by a different thread
-          if (!useCombinedLockForIterators && cnt != 0) {
+        auto checkCnt = [](int cnt) {
+          if (cnt != 0) {
             throw std::runtime_error(folly::sformat("Refcount leak {}", cnt));
           }
         };
@@ -320,6 +323,20 @@ class CacheStressor : public Stressor {
 
         const auto pid = static_cast<PoolId>(opPoolDist(gen));
         const Request& req(getReq(pid, gen, lastRequestId));
+        
+        if (*(req.sizeBegin) > 8 && !useEvictionController)
+          *(req.sizeBegin) -= 8;
+        
+        //filter size larger than 4mb
+        if (*(req.sizeBegin) >= maxAllocSize) {
+          lastRequestId = req.requestId;
+          if (req.requestId) {
+            // req might be deleted after calling notifyResult()
+            wg_->notifyResult(*req.requestId, OpResultType::kGetMiss);
+          }
+          continue;
+        }
+
         OpType op = req.getOp();
         const std::string* key = &(req.key);
         std::string oneHitKey;
@@ -327,7 +344,9 @@ class CacheStressor : public Stressor {
           oneHitKey = Request::getUniqueKey();
           key = &oneHitKey;
         }
-
+        if (op == OpType::kDel) {
+          op = OpType::kGet;
+        }
         OpResultType result(OpResultType::kNop);
         switch (op) {
         case OpType::kLoneSet:
@@ -347,7 +366,6 @@ class CacheStressor : public Stressor {
         case OpType::kLoneGet:
         case OpType::kGet: {
           ++stats.get;
-
           auto slock = chainedItemAcquireSharedLock(*key);
           auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
 
@@ -372,10 +390,13 @@ class CacheStressor : public Stressor {
               setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
                      req.admFeatureMap, req.itemValue);
             }
-          } else {
+          } //** else if (it->get_is_reinserted()) {
+            // from NVM cache
+            //** result = OpResultType::kGetMiss;
+          //** }
+          else {
             result = OpResultType::kGetHit;
           }
-
           break;
         }
         case OpType::kDel: {
@@ -492,7 +513,15 @@ class CacheStressor : public Stressor {
     if (it == nullptr) {
       ++stats.setFailure;
       return OpResultType::kSetFailure;
-    } else {
+    }
+    // bug: find() causes extra hit/miss status update
+    // else if (useNVM) {
+    //  populateItem(it, itemValue);
+    //  cache_->insertToNVM(it);
+    //  cache_->find(*key);
+    //  return OpResultType::kSetSuccess;
+    //}
+    else {
       populateItem(it, itemValue);
       cache_->insertOrReplace(it);
       return OpResultType::kSetSuccess;
@@ -563,6 +592,10 @@ class CacheStressor : public Stressor {
   // if locking is enabled.
   std::atomic<bool> lockEnabled_{false};
 
+  std::atomic<uint64_t> total_ops{0};
+
+  Stats prev_stat;
+
   // memorize rng to improve random performance
   folly::ThreadLocalPRNG rng;
 
@@ -570,6 +603,10 @@ class CacheStressor : public Stressor {
   const std::string hardcodedString_;
 
   std::unique_ptr<CacheT> cache_;
+
+  bool useEvictionController = 0;
+  bool useNVM = 0;
+  uint64_t maxAllocSize = 1024*1024;
 
   // Ticker that syncs the time according to trace timestamp.
   std::shared_ptr<TimeStampTicker> ticker_;

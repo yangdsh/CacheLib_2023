@@ -259,6 +259,21 @@ void MM2Q::Container<T, HookPtr>::withEvictionIterator(F&& fun) {
 }
 
 template <typename T, MM2Q::Hook<T> T::*HookPtr>
+void MM2Q::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
+  LruType type = getLruType(node);
+  lru_.getList(type).remove(node);
+  markCold(node);
+  unmarkTail(node);
+  unmarkHot(node);
+  lru_.getList(LruType::Cold).linkAtHead(node);
+  rebalance();
+}
+
+template <typename T, MM2Q::Hook<T> T::*HookPtr>
+void MM2Q::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+}
+
+template <typename T, MM2Q::Hook<T> T::*HookPtr>
 void MM2Q::Container<T, HookPtr>::removeLocked(T& node,
                                                bool doRebalance) noexcept {
   LruType type = getLruType(node);

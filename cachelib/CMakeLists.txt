@@ -42,7 +42,7 @@ set(PACKAGE_BUGREPORT "https://github.com/facebook/TBD")
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-option(BUILD_TESTS "If enabled, compile the tests." ON)
+option(BUILD_TESTS "If enabled, compile the tests." OFF)
 
 
 set(BIN_INSTALL_DIR bin CACHE STRING
@@ -84,6 +84,9 @@ set(CMAKE_MODULE_PATH
 # specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+SET(GCC_COVERAGE_COMPILE_FLAGS "-fopenmp")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
 
 # include(fb_cxx_flags)
 message(STATUS "Update CXXFLAGS: ${CMAKE_CXX_FLAGS}")
