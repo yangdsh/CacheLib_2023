@@ -38,7 +38,7 @@
     "numThreads": 32, 
     "prepopulateCache": true, 
     "traceFileNames": [
-      "/nfs/kvcache_traces_1.csv"
+      "/nfs2/kvcache_traces_1.csv"
     ]
   }
 }

@@ -1354,6 +1354,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           if (candidate_queue_size >= ec->prediction_batch_size) {
             ec->cv.notify_one();
           }
+          ec->enqueue_in_progress = 0;
         }
         if (ec->use_eviction_control > 0) {
           // get item to evict from the eviction queue
@@ -1403,7 +1404,8 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           }
         }
         //if (true) { //} itr.evictMain()) 
-        if (ec->use_eviction_control > 0) {
+        if (ec->use_eviction_control > 0 && ec->enqueue_in_progress == 0) {
+          ec->enqueue_in_progress = 1;
           int enqueue_batch_size = ec->prediction_batch_size;
 
           //  ----------------------- async mode ----------------------------
@@ -1439,6 +1441,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           if (candidate_queue_size >= ec->prediction_batch_size) {
             ec->cv.notify_one();
           }
+          ec->enqueue_in_progress = 0;
         }
         //enqueue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
         //      std::chrono::system_clock::now() - timeBegin_c).count();

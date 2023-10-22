@@ -704,8 +704,8 @@ class EvictionController {
             if (it.first == "ml_mess_mode") {
                 ml_mess_mode = stoi(it.second);
             }
-            if (it.first == "force_ml_mess_mode") {
-                force_ml_mess_mode = stoi(it.second);
+            if (it.first == "evict_all_mode") {
+                evict_all_mode = stoi(it.second);
             }
             if (it.first == "force_run") {
                 force_run = stoi(it.second);
@@ -808,7 +808,7 @@ class EvictionController {
             Item** items_for_prediction = new Item*[prediction_batch_size];
             int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size);
             // std::cout << "weak up" << std::endl;
-            if (!trained()) {
+            if (!trained() || evict_all_mode) {
                 for (int i = 0; i < cnt; i ++)
                     evict_queue.enqueue(items_for_prediction[i]);
                 delete[] items_for_prediction;
@@ -858,8 +858,6 @@ class EvictionController {
                     evict_queue.enqueue(items_for_prediction[i]);
                 } else {
                     items_for_prediction[i]->set_is_reinserted(1);// already reinserted
-                    if (evict_all_mode && !force_ml_mess_mode)
-                        evict_queue.enqueue(items_for_prediction[i]);
                 }
             }
             prediction_running = false;
@@ -935,7 +933,7 @@ class EvictionController {
     }
 
     void recordAccess(Item* item, bool enable_training) {
-        if (!use_eviction_control)
+        if (!use_eviction_control || evict_all_mode)
             return;
         uint32_t current_time;
         if (use_logical_clock) {

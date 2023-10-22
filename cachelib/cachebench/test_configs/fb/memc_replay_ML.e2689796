@@ -1,0 +1,76 @@
+===JSON Config===
+{
+  "cache_config": {
+    "allocator": "LRU",
+    "cacheSizeMB": 40960, 
+    "useEvictionControl": true,
+    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
+    "poolRebalanceIntervalSec" : 0,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "moveOnSlabRelease" : true,
+    "rebalanceMinSlabs" : 2,
+    "rebalanceStrategy": "hits",
+    "lruRefreshSec": 0,
+    "lruRefreshRatio": 0
+  }, 
+  "test_config":
+  {
+    "enableLookaside": true,
+    "opRatePerSec_": 25000000,
+    "generator": "replay",
+    "cachePieceSize": 4194304,
+    "numOps": 6250000,
+    "numThreads": 32,
+    "populateItem": true,
+    "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+    "traceFileName": "/nfs/memc_200m.tr.ant",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    }
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 200.00M ops to be run
+18:52:00       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+1 is trained
+1 is trained
+1 is trained
+1 is trained
+4 is trained
+1 is trained
+1 is trained
+7 is trained
+1 is trained
+6 is trained
+1 is trained
+18:53:00     199.73M ops completed. Hit Ratio  86.16% (RAM  86.16%, NVM   0.00%)
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 8,644,743
+Items in NVM  : 0
+Alloc Attempts: 27,676,615 Success: 100.00%
+Evict Attempts: 19,094,228 Success: 99.67%
+RAM Evictions : 19,031,872
+Fraction of pool 0 used : 1.00
+Cache Gets    : 200,000,000
+Hit Ratio     :  86.16%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 19031872
+
+== Throughput for  ==
+Total Ops : 200.00 million
+Total sets: 27,676,615
+get       : 3,315,224/s, success   :  86.16%
+couldExist:         0/s, success   :   0.00%
+set       :   458,770/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 12.70 million (parse error: 0)
+

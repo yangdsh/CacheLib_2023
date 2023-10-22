@@ -1,0 +1,144 @@
+===JSON Config===
+{
+  "cache_config":
+  {
+    "allocator": "LRU",
+    "useEvictionControl": true,
+    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
+    "cacheSizeMB" : 4096,
+    "poolRebalanceIntervalSec" : 0,
+    "htBucketPower" : 30,
+    "htLockPower" : 20,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "lruRefreshSec": 0,
+    "lruRefreshRatio": 0
+  },
+  "test_config":
+  {
+    "enableLookaside": true,
+    "generator": "replay",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    },    
+    "repeatTraceReplay": false,
+    "repeatOpCount" : false,
+    "onlySetIfMiss" : false,
+    "numOps": 10000000, 
+    "numThreads": 32, 
+    "prepopulateCache": true, 
+    "traceFileNames": [
+      "/nfs2/kvcache_traces_1.csv"
+    ]
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 320.00M ops to be run
+18:46:48       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+5 is trained
+3 is trained
+4 is trained
+2 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+18:47:48     166.57M ops completed. Hit Ratio  90.21% (RAM  90.21%, NVM   0.00%)
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+5 is trained
+3 is trained
+4 is trained
+2 is trained
+6 is trained
+3 is trained
+4 is trained
+3 is trained
+4 is trained
+3 is trained
+20 is trained
+4 is trained
+3 is trained
+5 is trained
+4 is trained
+3 is trained
+16 is trained
+17 is trained
+18 is trained
+19 is trained
+2 is trained
+4 is trained
+3 is trained
+4 is trained
+15 is trained
+3 is trained
+7 is trained
+20 is trained
+11 is trained
+4 is trained
+3 is trained
+13 is trained
+12 is trained
+9 is trained
+4 is trained
+5 is trained
+8 is trained
+3 is trained
+19 is trained
+10 is trained
+14 is trained
+6 is trained
+4 is trained
+18:48:48     302.21M ops completed. Hit Ratio  89.10% (RAM  89.10%, NVM   0.00%)
+3 is trained
+2 is trained
+4 is trained
+3 is trained
+18 is trained
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 4,083,591
+Items in NVM  : 0
+Alloc Attempts: 69,055,145 Success: 100.00%
+Evict Attempts: 50,449,744 Success: 99.56%
+RAM Evictions : 50,229,061
+Fraction of pool 0 used : 1.00
+Cache Gets    : 279,527,800
+Hit Ratio     :  89.77%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 50229061
+
+== Throughput for  ==
+Total Ops : 320.00 million
+Total sets: 69,055,145
+get       : 2,183,027/s, success   :  89.77%
+couldExist:         0/s, success   :   0.00%
+set       :   539,299/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 11.95 million (parse error: 0)
+
