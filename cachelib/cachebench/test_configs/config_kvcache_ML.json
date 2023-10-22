@@ -2,7 +2,7 @@
   "cache_config":
   {
     "allocator": "LRU",
-    "useEvictionControl": false,
+    "useEvictionControl": true,
     "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
     "cacheSizeMB" : 4096,
     "poolRebalanceIntervalSec" : 0,
@@ -28,7 +28,7 @@
     "numThreads": 32, 
     "prepopulateCache": true, 
     "traceFileNames": [
-      "/nfs2/kvcache_traces_1.csv"
+      "/nfs/kvcache_traces_1.csv"
     ]
   }
 }

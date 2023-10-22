@@ -10,7 +10,7 @@
     "moveOnSlabRelease" : true,
     "rebalanceMinSlabs" : 2,
     "rebalanceStrategy": "hits",
-    "lruRefreshSec": 600,
+    "lruRefreshSec": 0,
     "lruRefreshRatio": 0
   }, 
   "test_config":

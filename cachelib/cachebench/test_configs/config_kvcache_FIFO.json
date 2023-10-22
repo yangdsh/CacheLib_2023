@@ -10,7 +10,7 @@
     "htLockPower" : 20,
     "useCombinedLockForIterators": true,
     "tryLockUpdate": false,
-    "lruRefreshSec": 0,
+    "lruRefreshSec": 600,
     "lruRefreshRatio": 0,
     "nvmCachePaths": [
       "/dev/nvme1n1",

@@ -1,0 +1,77 @@
+===JSON Config===
+{
+  "cache_config":
+  {
+    "allocator": "LRU",
+    "useEvictionControl": false,
+    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "cacheSizeMB" : 4096,
+    "poolRebalanceIntervalSec" : 0,
+    "htBucketPower" : 30,
+    "htLockPower" : 20,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "lruRefreshSec": 0,
+    "lruRefreshRatio": 0,
+    "nvmCachePaths": [
+      "/dev/nvme1n1",
+      "/dev/nvme0n1p4"
+    ],
+    "nvmCacheSizeMB": 0,
+    "navyReaderThreads": 128,
+    "navyWriterThreads": 64,
+    "NavyBigHashSizePct": 0,
+    "NavyBlockSize": 4096,
+    "NavyParcelMemoryMB": 5760
+  },
+  "test_config":
+  {
+    "enableLookaside": true,
+    "generator": "replay",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    },    
+    "repeatTraceReplay": false,
+    "repeatOpCount" : false,
+    "onlySetIfMiss" : false,
+    "numOps": 10000000, 
+    "numThreads": 32, 
+    "prepopulateCache": true, 
+    "traceFileNames": [
+      "/nfs/kvcache_traces_1.csv"
+    ]
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 320.00M ops to be run
+12:20:52       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+12:21:52     198.23M ops completed. Hit Ratio  90.58% (RAM  90.58%, NVM   0.00%)
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 4,096,314
+Items in NVM  : 0
+Alloc Attempts: 67,183,459 Success: 100.00%
+Evict Attempts: 73,096,104 Success: 66.01%
+RAM Evictions : 48,249,492
+Fraction of pool 0 used : 1.00
+Cache Gets    : 279,527,800
+Hit Ratio     :  90.44%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 48249492
+
+== Throughput for  ==
+Total Ops : 320.00 million
+Total sets: 67,183,459
+get       : 2,795,967/s, success   :  90.44%
+couldExist:         0/s, success   :   0.00%
+set       :   672,000/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 12.02 million (parse error: 0)
+

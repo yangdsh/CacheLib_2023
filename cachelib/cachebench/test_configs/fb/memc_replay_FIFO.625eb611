@@ -1,0 +1,165 @@
+===JSON Config===
+{
+  "cache_config": {
+    "allocator": "LRU",
+    "cacheSizeMB": 40960, 
+    "useEvictionControl": false,
+    "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,32,num_leaves,32,rpe_target,1,n_deltas,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "poolRebalanceIntervalSec" : 0,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "moveOnSlabRelease" : true,
+    "rebalanceMinSlabs" : 2,
+    "rebalanceStrategy": "hits",
+    "lruRefreshSec": 600,
+    "lruRefreshRatio": 0
+  }, 
+  "test_config":
+  {
+    "enableLookaside": true,
+    "opRatePerSec_": 25000000,
+    "generator": "replay",
+    "cachePieceSize": 4194304,
+    "numOps": 6250000,
+    "numThreads": 32,
+    "populateItem": true,
+    "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+    "traceFileName": "/nfs/memc_200m.tr.ant",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    }
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 200.00M ops to be run
+12:13:47       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+===JSON Config===
+{
+  "cache_config": {
+    "allocator": "LRU",
+    "cacheSizeMB": 40960, 
+    "useEvictionControl": false,
+    "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,32,num_leaves,32,rpe_target,1,n_deltas,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "poolRebalanceIntervalSec" : 0,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "moveOnSlabRelease" : true,
+    "rebalanceMinSlabs" : 2,
+    "rebalanceStrategy": "hits",
+    "lruRefreshSec": 600,
+    "lruRefreshRatio": 0
+  }, 
+  "test_config":
+  {
+    "enableLookaside": true,
+    "opRatePerSec_": 25000000,
+    "generator": "replay",
+    "cachePieceSize": 4194304,
+    "numOps": 6250000,
+    "numThreads": 32,
+    "populateItem": true,
+    "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+    "traceFileName": "/nfs/memc_200m.tr.ant",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    }
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 200.00M ops to be run
+12:17:07       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 8,648,795
+Items in NVM  : 0
+Alloc Attempts: 32,714,205 Success: 100.00%
+Evict Attempts: 39,602,724 Success: 60.77%
+RAM Evictions : 24,065,410
+Fraction of pool 0 used : 1.00
+Cache Gets    : 200,000,000
+Hit Ratio     :  83.64%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 24065410
+
+== Throughput for  ==
+Total Ops : 200.00 million
+Total sets: 32,714,205
+get       : 7,804,618/s, success   :  83.64%
+couldExist:         0/s, success   :   0.00%
+set       : 1,276,609/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 12.70 million (parse error: 0)
+
+===JSON Config===
+{
+  "cache_config": {
+    "allocator": "LRU",
+    "cacheSizeMB": 40960, 
+    "useEvictionControl": false,
+    "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,32,num_leaves,32,rpe_target,1,n_deltas,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "poolRebalanceIntervalSec" : 0,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "moveOnSlabRelease" : true,
+    "rebalanceMinSlabs" : 2,
+    "rebalanceStrategy": "hits",
+    "lruRefreshSec": 600,
+    "lruRefreshRatio": 0
+  }, 
+  "test_config":
+  {
+    "enableLookaside": true,
+    "opRatePerSec_": 25000000,
+    "generator": "replay",
+    "cachePieceSize": 4194304,
+    "numOps": 6250000,
+    "numThreads": 32,
+    "populateItem": true,
+    "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+    "traceFileName": "/nfs/memc_200m.tr.ant",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    }
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 200.00M ops to be run
+12:27:28       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 8,648,635
+Items in NVM  : 0
+Alloc Attempts: 32,692,010 Success: 100.00%
+Evict Attempts: 39,716,584 Success: 60.54%
+RAM Evictions : 24,043,375
+Fraction of pool 0 used : 1.00
+Cache Gets    : 200,000,000
+Hit Ratio     :  83.65%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 24043375
+
+== Throughput for  ==
+Total Ops : 200.00 million
+Total sets: 32,692,010
+get       : 7,683,905/s, success   :  83.65%
+couldExist:         0/s, success   :   0.00%
+set       : 1,256,011/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 12.70 million (parse error: 0)
+
