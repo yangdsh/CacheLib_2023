@@ -227,7 +227,7 @@ bool MMTinyLFU::Container<T, HookPtr>::add(T& node) noexcept {
 
 template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>
 typename MMTinyLFU::Container<T, HookPtr>::LockedIterator
-MMTinyLFU::Container<T, HookPtr>::getEvictionIterator() const noexcept {
+MMTinyLFU::Container<T, HookPtr>::getEvictionIterator(bool fromTail) const noexcept {
   LockHolder l(lruMutex_);
   return LockedIterator{std::move(l), *this};
 }

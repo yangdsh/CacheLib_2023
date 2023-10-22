@@ -86,7 +86,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
       {SampleFields::OP_TIME, false, {"op_time"}},
       {SampleFields::KEY, true, {"key"}}, /* required */
       {SampleFields::KEY_SIZE, false, {"key_size"}},
-      {SampleFields::OP, true, {"op"}}, /* required */
+      {SampleFields::OP, false, {"op"}}, /* required */
       {SampleFields::OP_COUNT, false, {"op_count"}},
       {SampleFields::SIZE, true, {"size"}}, /* required */
       {SampleFields::CACHE_HIT, false, {"cache_hits"}},
@@ -254,16 +254,21 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   }
 
   // Set op
-  auto op = traceStream_.template getField<>(SampleFields::OP).value();
-  // TODO implement GET_LEASE and SET_LEASE emulations
-  if (!op.compare("GET") || !op.compare("GET_LEASE")) {
-    req->req_.setOp(OpType::kGet);
-  } else if (!op.compare("SET") || !op.compare("SET_LEASE")) {
-    req->req_.setOp(OpType::kSet);
-  } else if (!op.compare("DELETE")) {
-    req->req_.setOp(OpType::kDel);
+  auto op_optional = traceStream_.template getField<>(SampleFields::OP);
+  if (op_optional.has_value()) {
+    auto op = op_optional.value();
+    // TODO implement GET_LEASE and SET_LEASE emulations
+    if (!op.compare("GET") || !op.compare("GET_LEASE")) {
+      req->req_.setOp(OpType::kGet);
+    } else if (!op.compare("SET") || !op.compare("SET_LEASE")) {
+      req->req_.setOp(OpType::kSet);
+    } else if (!op.compare("DELETE")) {
+      req->req_.setOp(OpType::kDel);
+    } else {
+      return false;
+    }
   } else {
-    return false;
+    req->req_.setOp(OpType::kGet);
   }
 
   // Set size
@@ -305,6 +310,8 @@ inline std::unique_ptr<ReqWrapper> KVReplayGenerator::getReqInternal() {
   return reqWrapper;
 }
 
+uint64_t cnt = 0;
+
 inline void KVReplayGenerator::genRequests() {
   while (!shouldShutdown()) {
     std::unique_ptr<ReqWrapper> reqWrapper;
@@ -317,9 +324,16 @@ inline void KVReplayGenerator::genRequests() {
     std::unique_ptr<ReqWrapper> req;
     req.swap(reqWrapper);
     auto shardId = getShard(req->req_.key); //, req->key_.size() + req->sizes_[0]);
+    if (ampFactor_ == 42) {
+      shardId = ++cnt % config_.numThreads;
+    }
     while(1) {
       auto& stressorCtx = getStressorCtx(shardId);
       auto& reqQ = *stressorCtx.reqQueue_;
+      if (ampFactor_ == 42) {
+        req->req_.key = shardId;
+        *(req->req_.sizeBegin) = 131;
+      }
 
       if (!reqQ.write(std::move(req)) && !stressorCtx.isFinished() &&
              !shouldShutdown()) {

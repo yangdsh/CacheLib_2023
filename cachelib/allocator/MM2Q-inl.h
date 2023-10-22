@@ -242,7 +242,7 @@ bool MM2Q::Container<T, HookPtr>::add(T& node) noexcept {
 
 template <typename T, MM2Q::Hook<T> T::*HookPtr>
 typename MM2Q::Container<T, HookPtr>::LockedIterator
-MM2Q::Container<T, HookPtr>::getEvictionIterator() const noexcept {
+MM2Q::Container<T, HookPtr>::getEvictionIterator(bool fromTail) const noexcept {
   LockHolder l(*lruMutex_);
   return LockedIterator{std::move(l), lru_.rbegin()};
 }

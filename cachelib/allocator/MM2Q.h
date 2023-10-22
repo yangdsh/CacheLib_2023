@@ -515,7 +515,7 @@ class MM2Q {
     // Obtain an iterator that start from the tail and can be used
     // to search for evictions. This iterator holds a lock to this
     // container and only one such iterator can exist at a time
-    LockedIterator getEvictionIterator() const noexcept;
+    LockedIterator getEvictionIterator(bool fromTail = true) const noexcept;
 
     // Execute provided function under container lock. Function gets
     // Iterator passed as parameter.

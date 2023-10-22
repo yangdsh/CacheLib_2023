@@ -732,7 +732,7 @@ class EvictionController {
                 use_admission_control = static_cast<bool>(stoi(it.second));
             }
             if (it.first == "use_eviction_control") {
-                use_eviction_control = static_cast<bool>(stoi(it.second));
+                use_eviction_control = stoi(it.second);
             }
             if (it.first == "use_fifo") {
                 use_fifo = static_cast<bool>(stoi(it.second));
@@ -822,6 +822,10 @@ class EvictionController {
             // predict TTA in a batch
             for (int i = 0; i < cnt; i ++) {
                 Item* item = items_for_prediction[i];
+                if (item == NULL) {
+                    std::cout << "node is null at prediction" << std::endl;
+                    break;
+                }
                 int window_idx = item->past_timestamp / window_size;
                 prediction_model->emplace_back(item->access_in_windows, window_idx);
             }
@@ -941,7 +945,6 @@ class EvictionController {
         }
         if (window_size != 0) {
             if (enable_training) {
-               std::lock_guard<std::mutex> guard(training_data_mutex_);
                _generateTrainingData(item, current_time);
             }
             // clear prev round features
@@ -962,6 +965,9 @@ class EvictionController {
 
     void _generateTrainingData(Item* item, uint32_t current_time) {
         if (item->get_is_sampled() > 0 && window_size > 0) {
+            std::lock_guard<std::mutex> guard(training_data_mutex_);
+            if (item->get_is_sampled() == 0)
+                return;
             item->set_is_sampled(0);
             training_batch_cnt += 1;
             uint32_t sample_time = item->past_timestamp;
@@ -991,7 +997,7 @@ class EvictionController {
             }
             temp_training_model = training_model;
             training_model = build_ml_model();
-            cout << int(cid) << endl;
+            // cout << int(cid) << endl;
             // cout << "train size: " << training_batch_cnt << endl;
             if (async_mode && model_type != 1) {
                 train_threads.push_back(std::thread(&EvictionController::train_and_migrate, this));
@@ -1030,8 +1036,7 @@ class EvictionController {
         if (temp_training_model->set_model(temp_training_model->get_model()) == 0) {
             std::unique_lock lock(model_mutex_);
             prediction_model->delete_model();
-            // cout << cid << " is trained" << endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            cout << cid << " is trained" << endl;
             prediction_model->set_model(temp_training_model->get_model());
         } else {
             cout << "training model has error!" << endl;
@@ -1053,7 +1058,7 @@ class EvictionController {
     bool use_global_clock = false;
     bool use_logical_clock = true;
     bool use_admission_control = false;
-    bool use_eviction_control = true;
+    int use_eviction_control = true;
     bool use_admission_threshold = true;
     bool use_oracle = false;
     int max_reinsertions = 100;
@@ -1085,6 +1090,7 @@ class EvictionController {
     MLModel* temp_training_model = NULL;
     MLModel* prediction_model = NULL;
     bool training_in_progress = 0;
+    bool enqueue_in_progress = 0;
     bool isTrained = false;
     vector<std::thread> train_threads;
     vector<std::thread> prediction_threads;

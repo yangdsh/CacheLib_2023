@@ -389,7 +389,7 @@ class MMLru {
     // Obtain an iterator that start from the tail and can be used
     // to search for evictions. This iterator holds a lock to this
     // container and only one such iterator can exist at a time
-    LockedIterator getEvictionIterator() const noexcept;
+    LockedIterator getEvictionIterator(bool fromTail = true) const noexcept;
 
     // Execute provided function under container lock. Function gets
     // iterator passed as parameter.
@@ -504,7 +504,7 @@ class MMLru {
     // protects all operations on the lru. We never really just read the state
     // of the LRU. Hence we dont really require a RW mutex at this point of
     // time.
-    mutable folly::cacheline_aligned<Mutex> lruMutex_;
+    mutable folly::cacheline_aligned<Mutex> lruMutex_, lruHeadMutex_;
 
     const PtrCompressor compressor_{};
 

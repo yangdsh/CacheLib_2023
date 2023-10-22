@@ -3,14 +3,14 @@
     "allocator": "LRU",
     "cacheSizeMB": 40960, 
     "useEvictionControl": true,
-    "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,-1,num_iterations,32,num_leaves,32,rpe_target,1,n_deltas,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
     "poolRebalanceIntervalSec" : 0,
     "useCombinedLockForIterators": true,
     "tryLockUpdate": false,
     "moveOnSlabRelease" : true,
     "rebalanceMinSlabs" : 2,
     "rebalanceStrategy": "hits",
-    "lruRefreshSec": 600,
+    "lruRefreshSec": 0,
     "lruRefreshRatio": 0
   }, 
   "test_config":
