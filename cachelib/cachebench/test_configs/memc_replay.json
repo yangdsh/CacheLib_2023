@@ -2,7 +2,7 @@
   "cache_config": {
     "allocator": "LRU",
     "cacheSizeMB": 40960, 
-    "useEvictionControl": true,
+    "useEvictionControl": false,
     "MLConfig": "use_eviction_control,1,evict_all_mode,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
     "poolRebalanceIntervalSec" : 0,
     "useCombinedLockForIterators": true,
@@ -26,7 +26,7 @@
     "traceFileName": "/nfs/memc_200m.tr.ant",
     "replayGeneratorConfig":
     {
-        "ampFactor": 20
+        "ampFactor": 10
     }
   }
 }

@@ -30,6 +30,7 @@ bool Runner::run(std::chrono::seconds progressInterval,
   ProgressTracker tracker{*stressor_, progressStatsFile};
 
   stressor_->start();
+  progressInterval = std::chrono::seconds(1);
 
   if (!tracker.start(progressInterval)) {
     throw std::runtime_error("Cannot start ProgressTracker.");

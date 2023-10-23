@@ -1288,6 +1288,12 @@ void CacheAllocator<CacheTrait>::unlinkItemForEviction(Item& it) {
 }
 
 template <typename CacheTrait>
+void CacheAllocator<CacheTrait>::insertToNVM(WriteHandle& handle) {
+  auto token = nvmCache_->createPutToken(handle->getKey());
+  nvmCache_->put(*handle, std::move(token));
+}
+
+template <typename CacheTrait>
 std::pair<typename CacheAllocator<CacheTrait>::Item*,
           typename CacheAllocator<CacheTrait>::Item*>
 CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
@@ -1455,6 +1461,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
               ? &toRecycle_->asChainedItem().getParentItem(compressor_)
               : toRecycle_;
 
+      candidate_->unmarkNvmClean();
       const bool evictToNvmCache = shouldWriteToNvmCache(*candidate_);
       auto putToken = evictToNvmCache
                           ? nvmCache_->createPutToken(candidate_->getKey())

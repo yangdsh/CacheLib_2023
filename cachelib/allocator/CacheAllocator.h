@@ -1718,6 +1718,8 @@ class CacheAllocator : public CacheBase {
   // within the configured number of attempts.
   Item* findEviction(PoolId pid, ClassId cid);
 
+  void insertToNVM(WriteHandle& handle);
+
   // Get next eviction candidate from MMContainer, remove from AccessContainer,
   // MMContainer and insert into NVMCache if enabled.
   //

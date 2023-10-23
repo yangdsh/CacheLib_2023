@@ -143,6 +143,7 @@ struct Stats {
   void render(std::ostream& out) const {
     auto totalMisses = getTotalMisses();
     const double overallHitRatio = invertPctFn(totalMisses, numCacheGets);
+    const double ramHitRatio = invertPctFn(numCacheGetMiss, numCacheGets);
     out << folly::sformat("Items in RAM  : {:,}", numItems) << std::endl;
     out << folly::sformat("Items in NVM  : {:,}", numNvmItems) << std::endl;
 
@@ -227,8 +228,9 @@ struct Stats {
       out << folly::sformat("Cache Gets    : {:,}", numCacheGets) << std::endl;
       out << folly::sformat("Hit Ratio     : {:6.2f}%", overallHitRatio)
           << std::endl;
+      out << folly::sformat("RAM Hit Ratio     : {:6.2f}%", ramHitRatio) << std::endl;
 
-      if (FLAGS_report_api_latency) {
+      if (FLAGS_report_api_latency || true) {
         auto printLatencies =
             [&out](folly::StringPiece cat,
                    const util::PercentileStats::Estimates& latency) {
@@ -238,6 +240,7 @@ struct Stats {
                                       val);
               };
 
+              fmtLatency("avg", latency.avg);
               fmtLatency("p50", latency.p50);
               fmtLatency("p90", latency.p90);
               fmtLatency("p99", latency.p99);

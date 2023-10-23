@@ -488,12 +488,14 @@ std::unique_ptr<NvmItem> NvmCache<C>::makeNvmItem(const Item& item) {
 
     const size_t bufSize = NvmItem::estimateVariableSize(blobs);
     return std::unique_ptr<NvmItem>(new (bufSize) NvmItem(
-        poolId, item.getCreationTime(), item.getExpiryTime(), blobs));
+        poolId, item.getCreationTime(), item.getExpiryTime(), 
+        item.access_in_windows, item.past_timestamp, blobs));
   } else {
     Blob blob = makeBlob(item);
     const size_t bufSize = NvmItem::estimateVariableSize(blob);
     return std::unique_ptr<NvmItem>(new (bufSize) NvmItem(
-        poolId, item.getCreationTime(), item.getExpiryTime(), blob));
+        poolId, item.getCreationTime(), item.getExpiryTime(), 
+        item.access_in_windows, item.past_timestamp, blob));
   }
 }
 
@@ -676,6 +678,8 @@ typename NvmCache<C>::WriteHandle NvmCache<C>::createItem(
   if (!it) {
     return nullptr;
   }
+  it->access_in_windows = nvmItem.access_in_windows_;
+  it->past_timestamp = nvmItem.past_timestamp_;
 
   XDCHECK_LE(pBlob.data.size(), getStorageSizeInNvm(*it));
   XDCHECK_LE(pBlob.origAllocSize, pBlob.data.size());

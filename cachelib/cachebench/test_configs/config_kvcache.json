@@ -2,7 +2,7 @@
   "cache_config":
   {
     "allocator": "LRU",
-    "useEvictionControl": false,
+    "useEvictionControl": true,
     "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
     "cacheSizeMB" : 4096,
     "poolRebalanceIntervalSec" : 0,
@@ -13,11 +13,10 @@
     "lruRefreshSec": 0,
     "lruRefreshRatio": 0,
     "nvmCachePaths": [
-      "/dev/nvme1n1",
-      "/dev/nvme0n1p4"
+      "/dev/nvme1n1"
     ],
-    "nvmCacheSizeMB": 0,
-    "navyReaderThreads": 128,
+    "nvmCacheSizeMB": 409600,
+    "navyReaderThreads": 64,
     "navyWriterThreads": 64,
     "NavyBigHashSizePct": 0,
     "NavyBlockSize": 4096,
@@ -29,7 +28,7 @@
     "generator": "replay",
     "replayGeneratorConfig":
     {
-        "ampFactor": 20
+        "ampFactor": 10
     },    
     "repeatTraceReplay": false,
     "repeatOpCount" : false,
@@ -38,7 +37,7 @@
     "numThreads": 32, 
     "prepopulateCache": true, 
     "traceFileNames": [
-      "/nfs2/kvcache_traces_1.csv"
+      "/nfs/kvcache_traces_1.csv"
     ]
   }
 }

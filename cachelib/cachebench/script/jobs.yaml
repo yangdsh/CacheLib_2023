@@ -1,10 +1,9 @@
 debug: false
-dbcollection: cachelib_throughput_1018
-dburi: mongodb://dongshengy:dongshen20230809@nfs.yangdsh.lrbplus-pg0.clemson.cloudlab.us/dongshengyDB?authSource=admin
+dbcollection: cachelib_throughput_1022
 
 nodes:
-  - 1/node1
-  - 1/node2
+  #- 1/node1
+  #- 1/node2
   - 1/localhost
 
 cache_types:
@@ -16,8 +15,9 @@ cache_types:
 
 trace_files:
   #- ibm05.tr
-  - memc_200m.tr
-  - config_kvcache.tr
+  - memc_200m_with_ssd.tr
+  #- memc_200m.tr
+  #- config_kvcache.tr
   #- wiki2019_remapped.tr
   #- fb_follower_assoc.tr
   #- fb_follower_fbobj.tr

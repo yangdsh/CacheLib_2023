@@ -39,6 +39,28 @@ struct Blob {
 // NvmItem is used to store CacheItems in nvm cache.
 class FOLLY_PACK_ATTR NvmItem {
  public:
+  // store ML metadata
+  uint32_t access_in_windows_;
+  uint32_t past_timestamp_;
+  NvmItem(PoolId id,
+          uint32_t creationTime,
+          uint32_t expTime,
+          uint32_t access_in_windows,
+          uint32_t past_timestamp,
+          const std::vector<Blob>& blobs) : NvmItem(id, creationTime, expTime, blobs) {
+            access_in_windows_ = access_in_windows;
+            past_timestamp_ = past_timestamp;
+          }
+  NvmItem(PoolId id,
+          uint32_t creationTime,
+          uint32_t expTime,
+          uint32_t access_in_windows,
+          uint32_t past_timestamp,
+          Blob blob) : NvmItem(id, creationTime, expTime, blob) {
+            access_in_windows_ = access_in_windows;
+            past_timestamp_ = past_timestamp;
+          }
+
   // constructs a nvm item with multiple blob
   //
   // @param id            pool id for the original item

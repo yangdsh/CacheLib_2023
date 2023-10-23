@@ -176,6 +176,10 @@ class Cache {
   // @return write handle for the item if present or null handle.
   WriteHandle findToWrite(Key key);
 
+  void insertToNVM(WriteHandle& handle) {
+    cache_->insertToNVM(handle);
+  }
+
   // removes the key from the cache and returns corresponding cache result.
   // Tracks the operation for checking consistency if enabled.
   RemoveRes remove(Key key);

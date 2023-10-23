@@ -12,25 +12,25 @@ from datetime import date
 import pymongo
 
 myclient = pymongo.MongoClient(
-    "mongodb://dongshengy:dongshen@mmx.cs.princeton.edu:9528/dongshengyDB?authSource=admin")
+    "mongodb://dongshengy:dongshen20230809@nfs.yangdsh.lrbplus-pg0.clemson.cloudlab.us/dongshengyDB?authSource=admin")
 mydb = myclient["dongshengyDB"]
 env = "cloudlab"
-if env == "cloudlab2":
-    root = "/nfs/Cachelib_EC/"
-    cachebench_loc = "/nfs/Cachelib_EC/build-cachelib/cachebench/cachebench"
-    temp_dir = "/nfs/Cachelib_EC/build-cachelib/cachebench"
-elif env == "cloudlab":
+if env == "cloudlab":
+    root = "/nfs/CacheLib_2023/"
+    cachebench_loc = "/nfs/CacheLib_2023/build-cachelib/cachebench/cachebench"
+    temp_dir = "/nfs/CacheLib_2023/build-cachelib/cachebench"
+elif env == "cloudlab2":
     root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/"
     cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench/cachebench"
     temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench"
 
 ts = int(time.time())
-debug_nfs = 2
+debug_nfs = 0
 upload_mode = False
 should_upload = True
 sharding_mode = False
 multi_mode = 0
-n_cores = 8
+n_cores = 32
 if upload_mode:
     # nsdi_cachelib_stress_replay_full_sleep3: 16 instances, 16 threads, sleep 87us
     # nsdi_cachelib_stress_replay_full_sleep4: 8 instances, 24 threads, sleep 87us
@@ -60,7 +60,7 @@ def to_task_config(task, task_id):
                   , 'mlReqUs'):
             if k in task:
                 config['test_config'][k] = task[k]
-        config['test_config']['traceFileName'] = config['test_config']['traceFileName_' + env]
+        #config['test_config']['traceFileName'] = config['test_config']['traceFileName_' + env]
         if sharding_mode:
             config['cache_config']['cacheSizeMB'] = str(int(config['cache_config']['cacheSizeMB']) // 56)
             config['test_config']['traceFileName'] += '.' + str(task_id)
@@ -254,7 +254,8 @@ def run(args: dict, tasks: list):
                     task_str = f'taskset -c {j*4}-{j*4+3} sudo {task_str}'
                 elif multi_mode <= 8:
                     task_str = f'sudo blkdiscard {device} && taskset -c {j*8}-{j*8+7} sudo {task_str}'
-            task_str = f'bash --login -c "{task_str}" &> {temp_dir}/{ts}/{i}.log\n'
+            env_str = f'LD_LIBRARY_PATH="{root}opt/cachelib/lib" && export LD_LIBRARY_PATH'
+            task_str = f'bash --login -c "{env_str} && {task_str}" &> {temp_dir}/{ts}/{i}.log\n'
             if i == 0:
                 print(f'first task: {task_str}')
             f.write(task_str)
@@ -425,34 +426,14 @@ def upload_results(tasks, timestamp):
                     line = line.replace(' ', '') 
                     v = float(line.split(':')[-1])
                     result_dict['time_list'].append(v)'''
-                if line.startswith('Cache Gets'):
-                    if (len(line) > 40):
-                        continue
-                    line = line.replace(' ', '').replace(',', '')
-                    v = int(line.split(':')[-1]) + 1
-                    result_dict['ops_list'].append(v)
-                if line.startswith('Byte Requested'):
-                    if (len(line) > 40):
-                        continue
-                    line = line.replace(' ', '').replace(',', '')
-                    v = float(line.split(':')[-1])
-                    result_dict['byte_requested_list'].append(v)
-                if line.startswith('Byte Hit Ratio*'):
-                    line = line.replace(' ', '').replace('%', '')
-                    v = float(line.split(':')[-1])
-                    result_dict['byte_miss_list'].append(100 - v)
-                if line.startswith('Hit Ratio*'):
-                    line = line.replace(' ', '').replace('%', '')
-                    v = float(line.split(':')[-1])
-                    result_dict['hit_ratio_list'].append(v)
-                if line.startswith('RAM Hit Ratio'):
-                    line = line.replace(' ', '').replace('%', '')
-                    v = float(line.split(':')[-1])
+                if 'ops completed. Hit Ratio' in line:
+                    line = line.replace(' ', '').replace('%', '').replace(',', '').replace(')', '').replace('M', '')
+                    v = float(line.split(' ')[-3])
                     result_dict['ram_hit_ratio_list'].append(v)
-                if line.startswith('NVM Hit Ratio'):
-                    line = line.replace(' ', '').replace('%', '')
-                    v = float(line.split(':')[-1])
+                    v = float(line.split(' ')[-1])
                     result_dict['nvm_hit_ratio_list'].append(v)
+                    v = float(line.split(' ')[1])
+                    result_dict['ops_list'].append(v)
                 if line.startswith('set       :'):
                     line = line.replace(' ', '').replace('%', '')
                     hit_ratio = float(line.split(':')[-1])

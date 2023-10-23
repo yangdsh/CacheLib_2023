@@ -515,12 +515,12 @@ class CacheStressor : public Stressor {
       return OpResultType::kSetFailure;
     }
     // bug: find() causes extra hit/miss status update
-    // else if (useNVM) {
-    //  populateItem(it, itemValue);
-    //  cache_->insertToNVM(it);
+    else if (useNVM && false) {
+      populateItem(it, itemValue);
+      cache_->insertToNVM(it);
     //  cache_->find(*key);
-    //  return OpResultType::kSetSuccess;
-    //}
+      return OpResultType::kSetSuccess;
+    }
     else {
       populateItem(it, itemValue);
       cache_->insertOrReplace(it);

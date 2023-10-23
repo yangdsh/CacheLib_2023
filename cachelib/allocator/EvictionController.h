@@ -1034,7 +1034,7 @@ class EvictionController {
         if (temp_training_model->set_model(temp_training_model->get_model()) == 0) {
             std::unique_lock lock(model_mutex_);
             prediction_model->delete_model();
-            cout << cid << " is trained" << endl;
+            // cout << cid << " is trained" << endl;
             prediction_model->set_model(temp_training_model->get_model());
         } else {
             cout << "training model has error!" << endl;
