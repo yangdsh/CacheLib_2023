@@ -8,12 +8,10 @@
       "moveOnSlabRelease" : true,
       "rebalanceMinSlabs" : 2,
       "rebalanceStrategy": "hits",
-      "lruRefreshSec_": 0,
-      "lruRefreshRatio_": 0,
       "nvmCachePaths": [
         "/dev/nvme1n1"
       ],
-      "nvmCacheSizeMB": 1024000,
+      "nvmCacheSizeMB": 409600,
       "navyReaderThreads": 64,
       "navyWriterThreads": 64,
       "NavyBigHashSizePct": 0,
@@ -29,11 +27,11 @@
       "numOps": 6250000,
       "numThreads": 32,
       "populateItem": true,
-      "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
-      "traceFileName": "/nfs/memc_200m.tr.ant",
+      "traceFileName_cloudlab": "/nfs/cluster24",
+      "traceFileName": "/nfs/cluster24",
       "replayGeneratorConfig":
       {
-          "ampFactor": 2
+          "ampFactor": 10
       }
     }
 }

@@ -1,19 +1,17 @@
 {
     "cache_config": {
       "allocator": "LRU",
-      "cacheSizeMB": 4096, 
+      "cacheSizeMB": 128, 
       "useEvictionControl": false,
       "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,1,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,n_deltas,0,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
       "poolRebalanceIntervalSec" : 0,
       "moveOnSlabRelease" : true,
       "rebalanceMinSlabs" : 2,
       "rebalanceStrategy": "hits",
-      "lruRefreshSec_": 0,
-      "lruRefreshRatio_": 0,
       "nvmCachePaths": [
         "/dev/nvme1n1"
       ],
-      "nvmCacheSizeMB": 1024000,
+      "nvmCacheSizeMB": 409600,
       "navyReaderThreads": 64,
       "navyWriterThreads": 64,
       "NavyBigHashSizePct": 0,
@@ -26,14 +24,14 @@
       "opRatePerSec_": 25000000,
       "generator": "replay",
       "cachePieceSize": 4194304,
-      "numOps": 6250000,
+      "numOps": 200000000,
       "numThreads": 32,
       "populateItem": true,
-      "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
-      "traceFileName": "/nfs/memc_200m.tr.ant",
+      "traceFileName_cloudlab": "/nfs/cluster45",
+      "traceFileName": "/nfs/cluster45",
       "replayGeneratorConfig":
       {
-          "ampFactor": 2
+          "ampFactor": 10
       }
     }
 }

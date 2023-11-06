@@ -1,0 +1,64 @@
+===JSON Config===
+{
+  "cache_config": {
+    "allocator": "LRU",
+    "cacheSizeMB": 40960, 
+    "useEvictionControl": false,
+    "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,0,force_run,0,use_eviction_control,1,num_iterations,32,num_leaves,32,rpe_target,1,n_deltas,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
+    "poolRebalanceIntervalSec" : 0,
+    "useCombinedLockForIterators": true,
+    "tryLockUpdate": false,
+    "moveOnSlabRelease" : true,
+    "rebalanceMinSlabs" : 2,
+    "rebalanceStrategy": "hits",
+    "lruRefreshSec": 600,
+    "lruRefreshRatio": 0
+  }, 
+  "test_config":
+  {
+    "enableLookaside": true,
+    "opRatePerSec_": 25000000,
+    "generator": "replay",
+    "cachePieceSize": 4194304,
+    "numOps": 6250000,
+    "numThreads": 32,
+    "populateItem": true,
+    "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
+    "traceFileName": "/nfs/memc_200m.tr.ant",
+    "replayGeneratorConfig":
+    {
+        "ampFactor": 20
+    }
+  }
+}
+
+Welcome to OSS version of cachebench
+Total 200.00M ops to be run
+14:41:20       0.00M ops completed. Hit Ratio   0.00% (RAM   0.00%, NVM   0.00%)
+== Test Results ==
+== Allocator Stats ==
+Items in RAM  : 8,647,604
+Items in NVM  : 0
+Alloc Attempts: 32,722,562 Success: 100.00%
+Evict Attempts: 39,882,143 Success: 60.37%
+RAM Evictions : 24,074,958
+Fraction of pool 0 used : 1.00
+Cache Gets    : 200,000,000
+Hit Ratio     :  83.64%
+NVM Gets      :               0, Coalesced :   0.00%
+NVM Puts      :               0, Success   : 100.00%, Clean   :   0.00%, AbortsFromDel   :        0, AbortsFromGet   :        0
+NVM Evicts    :               0, Clean     :   0.00%, Unclean :       0, Double          :        0
+NVM Deletes   :               0 Skipped Deletes:   0.00%
+Total eviction executed 24074958
+
+== Throughput for  ==
+Total Ops : 200.00 million
+Total sets: 32,722,562
+get       : 7,759,116/s, success   :  83.64%
+couldExist:         0/s, success   :   0.00%
+set       : 1,269,490/s, success   : 100.00%
+del       :         0/s, found     :   0.00%
+
+== KVReplayGenerator Stats ==
+Total Processed Samples: 12.70 million (parse error: 0)
+

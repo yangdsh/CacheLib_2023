@@ -1,5 +1,5 @@
 debug: false
-dbcollection: cachelib_throughput_1022
+dbcollection: cachelib_throughput_1023
 
 nodes:
   #- 1/node1
@@ -8,18 +8,21 @@ nodes:
 
 cache_types:
   - EC
-  - LRU
+  #- LRU
+  #- FIFO
   # - EC_adm
   # - LRU2Q
   # - TinyLFU
 
 trace_files:
   #- ibm05.tr
-  - memc_200m_with_ssd.tr
+  #- memc_200m_with_ssd.tr
+  #- config_kvcache_with_ssd.tr
   #- memc_200m.tr
-  #- config_kvcache.tr
+  - config_kvcache.tr
   #- wiki2019_remapped.tr
-  #- fb_follower_assoc.tr
+  #- fbobj_with_ssd.tr
+  #- twitter45_with_ssd.tr
   #- fb_follower_fbobj.tr
   #- fb_leader_assoc.tr
   #- twitter_52.tr

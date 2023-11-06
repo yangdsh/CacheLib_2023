@@ -4,8 +4,9 @@ EC:
     #- TinyLFU
     #- LRU2Q
   MLConfig:
-    #- use_eviction_control,1,force_run,0,window_size_factor,1,batch_size_factor,1,debug_mode,0,async_mode,1,n_edc,0,n_deltas,0,num_threads,1,rpe_target,1,debug_mode,0,version,3,use_oracle,0,use_global_clock,1,num_iterations,16,num_leaves,16
-    - use_eviction_control,1,evict_all_mode,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32
+    #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,5,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,version,1106
+    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,5,model_type,0,batch_size_factor,1,window_size_factor,0.1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32
+    #- use_eviction_control,1,evict_all_mode,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32
   useEvictionControl:
     - true
   poolRebalanceIntervalSec:
@@ -25,6 +26,15 @@ LRU:
     - tail-age
     #- hits
     #- random
+
+FIFO:
+  allocator: LRU
+  useEvictionControl:
+    - false
+  poolRebalanceIntervalSec:
+    - 0
+  lruRefreshRatio:
+    - 100
 
 LRU2Q:
   allocator: LRU2Q

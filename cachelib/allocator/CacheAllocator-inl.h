@@ -1051,6 +1051,10 @@ bool CacheAllocator<CacheTrait>::insertImpl(const WriteHandle& handle,
   // insert into the MM container before we make it accessible. Find will
   // return this item as soon as it is accessible.
   insertInMMContainer(*(handle.getInternal()));
+  // if (event == AllocatorApiEvent::INSERT_FROM_NVM) {
+  //   Item& item = *(handle.getInternal());
+    // XLOG_EVERY_MS(INFO, 1000) << item.access_in_windows;
+  // }
 
   AllocatorApiResult result;
   if (!accessContainer_->insert(*(handle.getInternal()))) {
@@ -1407,6 +1411,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
             if (ec->training_batch_size > 130000)
               ec->training_batch_size = 130000;
             ec->params["batch_size"] = to_string(ec->training_batch_size);
+            std::cout << int(cid) << ' ' << ec->training_batch_size << std::endl;
           }
         }
         //if (true) { //} itr.evictMain()) 
@@ -1461,7 +1466,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
               ? &toRecycle_->asChainedItem().getParentItem(compressor_)
               : toRecycle_;
 
-      candidate_->unmarkNvmClean();
+      // candidate_->markNvmEvicted();
       const bool evictToNvmCache = shouldWriteToNvmCache(*candidate_);
       auto putToken = evictToNvmCache
                           ? nvmCache_->createPutToken(candidate_->getKey())
@@ -2030,7 +2035,7 @@ void CacheAllocator<CacheTrait>::render() {
       if (ec->reinserted_cnt > 0 || debug_mode >= 1) {
         std::cout << int(cid) << ' '
           << ", size: " << mmContainer_.sizeLocked()
-          //<< ", meta: " << ec->metas.count()
+          << ", ws: " << ec->window_size
           << ", batch: " << ec->training_batch_size
           // << ", forget: " << ec->forget_num
           // << ", clock: " << ec->logical_time
@@ -2061,7 +2066,7 @@ void CacheAllocator<CacheTrait>::render() {
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::findImpl(typename Item::Key key, AccessMode mode) {
-  if (debug_mode >= 1 && ++cacheParsedCnt % 10000000 == 0)
+  if (debug_mode > 1 && ++cacheParsedCnt % 10000000 == 0)
     render();
   auto handle = findInternalWithExpiration(key, AllocatorApiEvent::FIND);
   if (handle) {
@@ -2131,6 +2136,10 @@ bool CacheAllocator<CacheTrait>::recordAccessInMMContainer(Item& item,
   // track recently accessed items if needed
   if (UNLIKELY(config_.trackRecentItemsForDump)) {
     ring_->trackItem(reinterpret_cast<uintptr_t>(&item), item.getSize());
+  }
+  if (config_.useEvictionControl) {
+    evictionControllers_[allocInfo.poolId][allocInfo.classId]
+        ->recordAccess(&item, config_.useEvictionControl);
   }
 
   auto& mmContainer = getMMContainer(allocInfo.poolId, allocInfo.classId);

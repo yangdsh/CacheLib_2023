@@ -423,8 +423,8 @@ class CACHELIB_PACKED_ATTR CacheItem {
   AccessHook accessHook_;
 
   // for Eviction controller
-  uint32_t past_timestamp;
-  uint32_t access_in_windows;
+  uint32_t past_timestamp = 0;
+  uint32_t access_in_windows = 0;
   bool get_is_sampled() {
     return past_timestamp & 1;
   }

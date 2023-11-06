@@ -1,8 +1,5 @@
 memc_200m.tr:
   cache_sizes:
-    #- 128
-    #- 256
-    #- 512
     - 1024
     - 2048
     - 4096
@@ -15,11 +12,13 @@ memc_200m.tr:
     #- 4
     #- 8
     #- 16
-    - 32
-    #- 64
+    #- 32
+    - 64
   numOps:
     #- 50000000
-    - 1000000000
+    - 400000000
+  ampFactor:
+    - 2
   json_test_config:
     - cachelib/cachebench/test_configs/memc_replay.json
 
@@ -28,6 +27,8 @@ config_kvcache.tr:
     # MB
     # - 256
     # - 512
+    - 256
+    - 512
     - 1024
     - 2048
     - 4096
@@ -39,6 +40,8 @@ config_kvcache.tr:
     - 32
   numOps:
     - 1000000000
+  ampFactor:
+    - 10
   json_test_config:
     - cachelib/cachebench/test_configs/config_kvcache.json
 
@@ -244,31 +247,85 @@ memc_200m_with_ssd.tr:
   cache_sizes:
     #- 128
     #- 256
+    #- 5120
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+  numThreads: 
+    #- 16
+    #- 24
+    #- 2
+    #- 4
+    #- 8
+    #- 16
+    #- 32
+    - 64
+  numOps:
+    - 400000000
+    #- 200000000
+  ampFactor:
+    - 2
+  json_test_config:
+    - cachelib/cachebench/test_configs/memc_replay_with_ssd.json
+
+config_kvcache_with_ssd.tr:
+  cache_sizes:
+    # MB
+    - 256
     - 512
     - 1024
     - 2048
     - 4096
-    #- 6144
     - 8192
-    #- 128000
+    - 16384
+    #- 32768
+    #- 65536
+  numThreads:
+    #- 8
+    #- 16
+    - 32
+  numOps:
+    - 1000000000
+    #- 4000000000
+  ampFactor:
+    - 10
+  json_test_config:
+    - cachelib/cachebench/test_configs/config_kvcache_with_ssd.json
+
+twitter45_with_ssd.tr:
+  cache_sizes:
+    # MB
+    # - 256
+    # - 512
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    #- 32768
+    #- 65536
   numThreads: 
     - 32
   numOps:
-    - 199000000
+    - 1000000000
+  ampFactor:
+    - 5
   json_test_config:
-    - cachelib/cachebench/test_configs/memc_replay_with_ssd.json
+    - cachelib/cachebench/test_configs/twitter45.json
 
 fbobj_with_ssd.tr:
   cache_sizes:
     # MB
     # - 256
     # - 512
-    # - 1024
-    #- 2048
+    - 1024
+    - 2048
     - 4096
-    #- 8192
-    #- 16384
-    #- 32768
+    - 8192
+    - 16384
+    - 32768
     #- 65536
   cacheSetLatency:
     - 0
@@ -279,6 +336,8 @@ fbobj_with_ssd.tr:
   numThreads: 
     - 32
   numOps:
-    - 990000000
+    - 1000000000
+  ampFactor:
+    - 5
   json_test_config:
     - cachelib/cachebench/test_configs/fbobj.json

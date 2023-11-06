@@ -16,9 +16,9 @@ myclient = pymongo.MongoClient(
 mydb = myclient["dongshengyDB"]
 env = "cloudlab"
 if env == "cloudlab":
-    root = "/nfs/CacheLib_2023/"
-    cachebench_loc = "/nfs/CacheLib_2023/build-cachelib/cachebench/cachebench"
-    temp_dir = "/nfs/CacheLib_2023/build-cachelib/cachebench"
+    root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/"
+    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench"
+    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench"
 elif env == "cloudlab2":
     root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/"
     cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench/cachebench"
@@ -45,7 +45,7 @@ if upload_mode:
     #ts = "1680481369" # 2941604
     # 1680631155, 32xxxxxx
     # 1680631125, 29xxxxxx
-    ts = "1688630041"
+    ts = "1698784999"
 
 
 def to_task_config(task, task_id):
@@ -53,13 +53,15 @@ def to_task_config(task, task_id):
         config = json.load(f)
         config['cache_config']['cacheSizeMB'] = task['cache_size']
         for k in ('useEvictionControl', 'MLConfig', 'allocator', 
-                  'rebalanceStrategy', 'poolRebalanceIntervalSec', 'allocFactor'):
+                  'rebalanceStrategy', 'poolRebalanceIntervalSec', 'allocFactor', 'lruRefreshRatio'):
             if k in task:
                 config['cache_config'][k] = task[k]
         for k in ('numOps', 'numThreads', "wallTimeReplaySpeed", "cacheSetLatency"
                   , 'mlReqUs'):
             if k in task:
                 config['test_config'][k] = task[k]
+        if 'ampFactor' in task:
+            config['test_config']['replayGeneratorConfig']['ampFactor'] = task['ampFactor']
         #config['test_config']['traceFileName'] = config['test_config']['traceFileName_' + env]
         if sharding_mode:
             config['cache_config']['cacheSizeMB'] = str(int(config['cache_config']['cacheSizeMB']) // 56)
@@ -314,6 +316,8 @@ def upload_results(tasks, timestamp):
             result_dict['cache_type'] = tasks[i]['cache_type']
             if 'numThreads' in tasks[i]:
                 result_dict['numThreads'] = tasks[i]['numThreads']
+            if 'ampFactor' in tasks[i]:
+                result_dict['ampFactor'] = tasks[i]['ampFactor']
         '''with open(f'{temp_dir}/{timestamp}/{i}.stat') as f:
             lines = f.readlines()
             for line in lines:
@@ -427,13 +431,14 @@ def upload_results(tasks, timestamp):
                     v = float(line.split(':')[-1])
                     result_dict['time_list'].append(v)'''
                 if 'ops completed. Hit Ratio' in line:
-                    line = line.replace(' ', '').replace('%', '').replace(',', '').replace(')', '').replace('M', '')
-                    v = float(line.split(' ')[-3])
-                    result_dict['ram_hit_ratio_list'].append(v)
-                    v = float(line.split(' ')[-1])
-                    result_dict['nvm_hit_ratio_list'].append(v)
-                    v = float(line.split(' ')[1])
-                    result_dict['ops_list'].append(v)
+                    line = line.replace('%', '').replace(',', '').replace(')', '').replace('M', '')
+                    if len(line.split()) == 11:
+                        v = float(line.split()[-3])
+                        result_dict['ram_hit_ratio_list'].append(v)
+                        v = float(line.split()[-1])
+                        result_dict['nvm_hit_ratio_list'].append(v)
+                        v = float(line.split()[1])
+                        result_dict['ops_list'].append(v)
                 if line.startswith('set       :'):
                     line = line.replace(' ', '').replace('%', '')
                     hit_ratio = float(line.split(':')[-1])

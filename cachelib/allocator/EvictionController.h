@@ -577,7 +577,6 @@ public:
         // get_model_importances();
         LGBM_DatasetFree(trainData);
         if (debug_mode >= 1) {
-            cout << "model size: " << lgbm_len << endl;
             cout << "number of 1s in feats: " << avg_label / n_in_batch << endl;
             cout << "train time: " << std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - timeBegin).count() << endl;
@@ -608,7 +607,7 @@ public:
         auto scores = predict();
         for (int i = 0; i < scores.size(); i ++) {
             double TTA = exp2(scores[i]);
-            cout << "feature bit id: " <<  i << ' ' << TTA << endl;
+            cout << "feature bit id: " << i << ' ' << TTA << endl;
         }
         clear();
         return sum;
@@ -768,6 +767,9 @@ class EvictionController {
             if (it.first == "sample_rate") {
                 sample_rate = stoi(it.second);
             }
+            if (it.first == "training_sample_rate") {
+                training_sample_rate = stoi(it.second);
+            }
             if (it.first == "prediction_size_threshold") {
                 prediction_size_threshold = stoi(it.second);
             }
@@ -851,7 +853,7 @@ class EvictionController {
                         * TTA_diff_scaling;
 
                 bool to_reinsert = ifReinsertItem(TTA);
-                if (ml_mess_mode && is_mess_period) {
+                if (ml_mess_mode) {
                     to_reinsert = !to_reinsert;
                 }
                 if(!to_reinsert) {
@@ -946,6 +948,9 @@ class EvictionController {
                _generateTrainingData(item, current_time);
             }
             // clear prev round features
+            if (item->getKey() == "544637") {
+                std::cout << "FEATURE of " << item->getKey() << ':' << item->access_in_windows << std::endl;
+            }
             bitset<32> w(item->access_in_windows);
             int past_window_idx = item->past_timestamp / window_size;
             int window_idx = current_time / window_size;
@@ -954,6 +959,9 @@ class EvictionController {
             // update features
             w[window_idx % feature_cnt] = 1;
             item->access_in_windows = w.to_ulong();
+            if (item->getKey() == "544637") {
+                std::cout << "PASTTIME " << item->past_timestamp << ' ' << item->access_in_windows << std::endl;
+            }
         } else {
             item->access_in_windows = 1;
         }
@@ -1023,7 +1031,7 @@ class EvictionController {
                 std::chrono::system_clock::now() - timeBegin).count();
         //cout << "training time: " << train_time << endl;
         
-        //cout << "cid: " << cid << endl;
+        cout << "cid: " << int(cid) << endl;
         if (temp_training_model->info(debug_mode >= 3) == 0) {
             cout << "training ends with error!" << endl;
             delete temp_training_model; 
@@ -1081,7 +1089,7 @@ class EvictionController {
     bool force_run = 0;
     int feature_cnt = 32;
     float window_size_factor = 10;
-    int training_sample_rate = 10;
+    int training_sample_rate = 5;
     
     // running variables
     MLModel* training_model = NULL;
