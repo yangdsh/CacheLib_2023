@@ -238,6 +238,7 @@ case "$1" in
     SRCDIR=$REPODIR
     external_git_tag=3d33c4cae380e412f1a81f193289262b668956e5
     external_git_clone=yes
+    external_git_tag=3d33c4cae380e412f1a81f193289262b668956e5
     cmake_custom_params="-DBUILD_SHARED_LIBS=ON"
     ;;
 

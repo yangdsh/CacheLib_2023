@@ -33,7 +33,7 @@
       "traceFileName": "/nfs/memc_200m.tr.ant",
       "replayGeneratorConfig":
       {
-          "ampFactor": 2
+          "ampFactor": 10
       }
     }
 }
