@@ -248,14 +248,14 @@ memc_200m_with_ssd.tr:
     #- 128
     #- 256
     #- 5120
-    - 1024
+    #- 1024
     - 2048
     - 4096
     - 8192
     - 16384
+    - 32768
+    - 65536
   numThreads: 
-    #- 16
-    #- 24
     #- 2
     #- 4
     #- 8
@@ -320,24 +320,18 @@ fbobj_with_ssd.tr:
     # MB
     # - 256
     # - 512
-    - 1024
+    #- 1024
     - 2048
     - 4096
     - 8192
     - 16384
     - 32768
-    #- 65536
-  cacheSetLatency:
-    - 0
-    #- 87000
-    #- 100000
-    #- 600000
-    #- 1200000
+    - 65536
   numThreads: 
     - 32
   numOps:
     - 1000000000
   ampFactor:
-    - 5
+    - 10
   json_test_config:
     - cachelib/cachebench/test_configs/fbobj.json

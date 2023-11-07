@@ -6,6 +6,7 @@
 #include <LightGBM/c_api.h>
 #include <math.h>
 #include <string.h>
+#include <bitset>
 #include <chrono>
 #include <vector>
 #include <map>
@@ -715,6 +716,12 @@ class EvictionController {
             if (it.first == "window_size_factor") {
                 window_size_factor = stof(it.second);
             }
+            if (it.first == "ram_meta_mode") {
+                ram_meta_mode = stof(it.second);
+            }
+            if (it.first == "reinsert_sample_rate") {
+                reinsert_sample_rate = stof(it.second);
+            }
             if (it.first == "memory_window_size") {
                 memory_window_size = stoi(it.second);
             }
@@ -857,6 +864,10 @@ class EvictionController {
                     to_reinsert = !to_reinsert;
                 }
                 if(!to_reinsert) {
+                    if (items_for_prediction[i]->get_is_reinserted() && ram_meta_mode) {
+                        // generate negative training data
+                        _generateTrainingData(items_for_prediction[i], -1);
+                    }
                     evict_queue.enqueue(items_for_prediction[i]);
                 } else {
                     items_for_prediction[i]->set_is_reinserted(1);// already reinserted
@@ -919,17 +930,13 @@ class EvictionController {
             }
             return true;
         } else {
+            // sampled for training
+            if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
+                return true;
             if (repeat < reinsertion_per_eviction)
                 loosen_threshold();
             adjust_threshold();
             repeat = 0;
-            // generate negative training data
-            /* uint32_t current_time;
-            if (use_logical_clock) 
-                current_time = logical_time; 
-            else    
-                current_time = util::getCurrentTimeSec();
-            _generateTrainingData(meta, current_time + threshold);*/
             return false;
         }
     }
@@ -970,25 +977,30 @@ class EvictionController {
     }
 
     void _generateTrainingData(Item* item, uint32_t current_time) {
-        if (item->get_is_sampled() > 0 && window_size > 0) {
+        if (item->get_is_sampled() > 0 && window_size > 0 && item->past_timestamp != 0) {
             std::lock_guard<std::mutex> guard(training_data_mutex_);
             if (item->get_is_sampled() == 0)
                 return;
             item->set_is_sampled(0);
-            training_batch_cnt += 1;
             uint32_t sample_time = item->past_timestamp;
             uint32_t tta_label = current_time - sample_time;
-            if (item->get_is_reinserted()) {
-                reinsert_cnt ++;
-                reinsert_tta += tta_label;
+            if (current_time == -1) {
+                if (logical_time - sample_time > threshold)
+                    tta_label = (logical_time - sample_time) * 2;
+                else return;
             } else {
-                victim_cnt ++;
-                victim_tta += tta_label;
+                if (item->get_is_reinserted()) {
+                    reinsert_cnt ++;
+                    reinsert_tta += tta_label;
+                } else {
+                    victim_cnt ++;
+                    victim_tta += tta_label;
+                }
             }
             item->set_is_reinserted(0);
             training_model->emplace_back_training_sample(item->access_in_windows,
                 sample_time / window_size, tta_label);
-
+            training_batch_cnt += 1;
             maybe_train();
         }
     }
@@ -1085,11 +1097,12 @@ class EvictionController {
     int batch_size_factor = 10;
     bool prediction_running = false;
     bool ml_mess_mode = 0;
-    bool force_ml_mess_mode = 0;
+    bool ram_meta_mode = 0;
     bool force_run = 0;
     int feature_cnt = 32;
     float window_size_factor = 10;
     int training_sample_rate = 5;
+    int reinsert_sample_rate = 5;
     
     // running variables
     MLModel* training_model = NULL;

@@ -1,5 +1,5 @@
 debug: false
-dbcollection: cachelib_throughput_1023
+dbcollection: cachelib_throughput_1106
 
 nodes:
   #- 1/node1
@@ -17,11 +17,11 @@ cache_types:
 trace_files:
   #- ibm05.tr
   #- memc_200m_with_ssd.tr
-  #- config_kvcache_with_ssd.tr
-  #- memc_200m.tr
-  - config_kvcache.tr
-  #- wiki2019_remapped.tr
   #- fbobj_with_ssd.tr
+  - config_kvcache_with_ssd.tr
+  #- memc_200m.tr
+  #- config_kvcache.tr
+  #- wiki2019_remapped.tr
   #- twitter45_with_ssd.tr
   #- fb_follower_fbobj.tr
   #- fb_leader_assoc.tr

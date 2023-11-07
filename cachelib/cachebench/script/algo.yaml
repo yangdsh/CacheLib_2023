@@ -5,7 +5,7 @@ EC:
     #- LRU2Q
   MLConfig:
     #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,5,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,version,1106
-    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,5,model_type,0,batch_size_factor,1,window_size_factor,0.1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32
+    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,0.2,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,ram_meta_mode,1,version,ram1
     #- use_eviction_control,1,evict_all_mode,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32
   useEvictionControl:
     - true
