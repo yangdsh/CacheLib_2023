@@ -52,7 +52,7 @@ def to_task_config(task, task_id):
     with open(task['json_test_config']) as f:
         config = json.load(f)
         config['cache_config']['cacheSizeMB'] = task['cache_size']
-        for k in ('useEvictionControl', 'MLConfig', 'allocator', 
+        for k in ('useEvictionControl', 'MLConfig', 'allocator', 'lruRefreshSec',
                   'rebalanceStrategy', 'poolRebalanceIntervalSec', 'allocFactor', 'lruRefreshRatio'):
             if k in task:
                 config['cache_config'][k] = task[k]
