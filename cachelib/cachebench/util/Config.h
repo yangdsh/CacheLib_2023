@@ -210,6 +210,8 @@ struct StressorConfig : public JSONConfig {
   // performance of value access.
   bool touchValue{false};
 
+  bool updateMeta{true};
+
   uint64_t numOps{0};     // operation per thread
   uint64_t numThreads{0}; // number of threads that will run
   uint64_t numKeys{0};    // number of keys that will be used

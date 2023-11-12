@@ -11,7 +11,7 @@
       "nvmCachePaths": [
         "/dev/nvme1n1"
       ],
-      "nvmCacheSizeMB": 409600,
+      "nvmCacheSizeMB": 0,
       "navyReaderThreads": 64,
       "navyWriterThreads": 64,
       "NavyBigHashSizePct": 0,

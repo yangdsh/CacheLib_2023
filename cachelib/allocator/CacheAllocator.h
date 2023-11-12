@@ -148,6 +148,25 @@ class GET_CLASS_NAME(ObjectCache, ObjectHandleInvalid);
 } // namespace test
 } // namespace objcache
 
+#define META_IN_RAM
+class ObjectInfo {
+  public:
+  static uint64_t key_to_int(const string& key) {
+    std::hash<std::string> string_hasher;
+    return string_hasher(key);
+  }
+
+  ObjectInfo():
+    key(-1), feat(-1), past_timestamp(-1) {}
+
+  ObjectInfo(uint64_t key_, uint32_t feat_, uint32_t past_timestamp_):
+    key(key_), feat(feat_), past_timestamp(past_timestamp_) {}
+
+  uint64_t key;
+  uint32_t feat;
+  uint32_t past_timestamp;
+};
+
 // CacheAllocator can provide an interface to make Keyed Allocations(Item) and
 // takes two templated types that control how the allocation is
 // maintained(MMType aka MemoryManagementType) and accessed(AccessType). The
@@ -411,6 +430,17 @@ class CacheAllocator : public CacheBase {
   WriteHandle allocate(PoolId id,
                        Key key,
                        uint32_t size,
+                       uint32_t ttlSecs = 0,
+                       uint32_t creationTime = 0) {
+                        ObjectInfo objInfo, objInfoRet;
+                        return allocate(id, key, size, objInfo, objInfoRet, ttlSecs, creationTime);
+                      };
+  
+  WriteHandle allocate(PoolId id,
+                       Key key,
+                       uint32_t size,
+                       ObjectInfo& objInfo,
+                       ObjectInfo& objInfoRet,
                        uint32_t ttlSecs = 0,
                        uint32_t creationTime = 0);
 
@@ -1463,9 +1493,21 @@ class CacheAllocator : public CacheBase {
   WriteHandle allocateInternal(PoolId id,
                                Key key,
                                uint32_t size,
+                               ObjectInfo& objInfo,
+                               ObjectInfo& objInfoRet,
                                uint32_t creationTime,
                                uint32_t expiryTime,
                                bool fromBgThread = false);
+
+  WriteHandle allocateInternal(PoolId id,
+                               Key key,
+                               uint32_t size,
+                               uint32_t creationTime,
+                               uint32_t expiryTime,
+                               bool fromBgThread = false) {
+    ObjectInfo objInfo, objInfoRet;
+    return allocateInternal(id, key, size, objInfo, objInfoRet, creationTime, expiryTime, fromBgThread);
+  };
 
   // Allocate a chained item
   //
@@ -1716,7 +1758,12 @@ class CacheAllocator : public CacheBase {
   // @param  cid  the id of the class to look for evictions inside
   // @return An evicted item or nullptr  if there is no suitable candidate found
   // within the configured number of attempts.
-  Item* findEviction(PoolId pid, ClassId cid);
+  Item* findEviction(PoolId pid, ClassId cid) {
+    ObjectInfo objInfo;
+    findEviction(pid, cid, objInfo);
+  }
+
+  Item* findEviction(PoolId pid, ClassId cid, ObjectInfo& objInfo);
 
   void insertToNVM(WriteHandle& handle);
 

@@ -46,6 +46,11 @@ struct ThroughputStats {
   // current number of ops executed. Read periodically to track progress
   uint64_t ops{0};
 
+  uint64_t updateSSD{0};
+  uint64_t writeSSD{0};
+  uint64_t readSSD{0};
+  uint64_t readStaleSSD{0};
+
   // operator overload to aggregate multiple instances of ThroughputStats, one
   // from each  thread
   ThroughputStats& operator+=(const ThroughputStats& other);

@@ -719,11 +719,11 @@ class EvictionController {
             if (it.first == "ram_meta_mode") {
                 ram_meta_mode = stof(it.second);
             }
-            if (it.first == "reinsert_sample_rate") {
-                reinsert_sample_rate = stof(it.second);
-            }
             if (it.first == "memory_window_size") {
                 memory_window_size = stoi(it.second);
+            }
+            if (it.first == "keepMetaInterval") {
+                keepMetaInterval = stoi(it.second);
             }
             if (it.first == "use_single_EC") {
                 use_single_EC = static_cast<bool>(stoi(it.second));
@@ -930,9 +930,6 @@ class EvictionController {
             }
             return true;
         } else {
-            // sampled for training
-            if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
-                return true;
             if (repeat < reinsertion_per_eviction)
                 loosen_threshold();
             adjust_threshold();
@@ -1102,7 +1099,7 @@ class EvictionController {
     int feature_cnt = 32;
     float window_size_factor = 10;
     int training_sample_rate = 5;
-    int reinsert_sample_rate = 5;
+    int keepMetaInterval = 0;
     
     // running variables
     MLModel* training_model = NULL;

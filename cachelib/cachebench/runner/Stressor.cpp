@@ -44,6 +44,10 @@ ThroughputStats& ThroughputStats::operator+=(const ThroughputStats& other) {
   couldExistOp += other.couldExistOp;
   couldExistOpFalse += other.couldExistOpFalse;
   ops += other.ops;
+  updateSSD += other.updateSSD;
+  writeSSD += other.writeSSD;
+  readSSD += other.readSSD;
+  readStaleSSD += other.readStaleSSD;
 
   return *this;
 }

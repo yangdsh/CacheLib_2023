@@ -1,5 +1,6 @@
 memc_200m.tr:
   cache_sizes:
+    - 512
     - 1024
     - 2048
     - 4096
@@ -12,22 +13,42 @@ memc_200m.tr:
     #- 4
     #- 8
     #- 16
-    #- 32
-    - 64
+    - 32
+    #- 64
   numOps:
     #- 50000000
-    - 400000000
+    - 200000000
   ampFactor:
-    - 2
+    - 1
   json_test_config:
     - cachelib/cachebench/test_configs/memc_replay.json
+
+twitter_7.tr:
+  cache_sizes:
+    # MB
+    # - 128
+    - 256
+    - 512
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    #- 16384
+    #- 32768
+    # - 65536
+  numOps:
+    - 1000000000
+  ampFactor:
+    - 10
+  json_test_config:
+    - cachelib/cachebench/test_configs/twitter7.json
 
 config_kvcache.tr:
   cache_sizes:
     # MB
     # - 256
     # - 512
-    - 256
+    #- 256
     - 512
     - 1024
     - 2048
@@ -333,5 +354,26 @@ fbobj_with_ssd.tr:
     - 1000000000
   ampFactor:
     - 10
+  json_test_config:
+    - cachelib/cachebench/test_configs/fbobj_with_ssd.json
+
+fbobj.tr:
+  cache_sizes:
+    # MB
+    # - 256
+    # - 512
+    #- 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    - 32768
+    - 65536
+  numThreads: 
+    - 32
+  numOps:
+    - 1000000000
+  ampFactor:
+    - 5
   json_test_config:
     - cachelib/cachebench/test_configs/fbobj.json

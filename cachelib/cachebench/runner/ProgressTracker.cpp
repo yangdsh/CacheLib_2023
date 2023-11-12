@@ -62,6 +62,16 @@ void ProgressTracker::work() {
   // log this always to stdout
   std::cout << thStr << std::endl;
 
+  auto thStr2 = folly::sformat(
+      "{}M Metadata write/read/!write/!read {} {} {} {}",
+      mOpsPerSec,
+      throughputStats.writeSSD,
+      throughputStats.readSSD,
+      throughputStats.writeSSD - throughputStats.updateSSD,
+      throughputStats.readStaleSSD
+      );
+  std::cout << thStr2 << std::endl;
+
   // additionally log into the stats file
   if (statsFile_.is_open()) {
     statsFile_ << thStr << std::endl;

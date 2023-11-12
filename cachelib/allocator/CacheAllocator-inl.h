@@ -322,12 +322,14 @@ typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::allocate(PoolId poolId,
                                      typename Item::Key key,
                                      uint32_t size,
+                                     ObjectInfo& objInfo,
+                                     ObjectInfo& objInfoRet,
                                      uint32_t ttlSecs,
                                      uint32_t creationTime) {
   if (creationTime == 0) {
     creationTime = util::getCurrentTimeSec();
   }
-  return allocateInternal(poolId, key, size, creationTime,
+  return allocateInternal(poolId, key, size, objInfo, objInfoRet, creationTime,
                           ttlSecs == 0 ? 0 : creationTime + ttlSecs);
 }
 
@@ -342,12 +344,17 @@ typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
                                              typename Item::Key key,
                                              uint32_t size,
+                                             ObjectInfo& objInfo,
+                                             ObjectInfo& objInfoRet,
                                              uint32_t creationTime,
                                              uint32_t expiryTime,
                                              bool fromBgThread) {
   util::LatencyTracker tracker{stats().allocateLatency_};
 
   SCOPE_FAIL { stats_.invalidAllocs.inc(); };
+  if (config_.useEvictionControl) {  
+    size += 8;
+  }
 
   // number of bytes required for this item
   const auto requiredSize = Item::getRequiredSize(key, size);
@@ -367,7 +374,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
   }
 
   if (memory == nullptr) {
-    memory = findEviction(pid, cid);
+    memory = findEviction(pid, cid, objInfoRet);
   }
 
   WriteHandle handle;
@@ -386,6 +393,22 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
       handle.markNascent();
       (*stats_.fragmentationSize)[pid][cid].add(
           util::getFragmentation(*this, *handle));
+#ifdef META_IN_RAM
+      if (objInfo.key != -1 && config_.useEvictionControl) {
+        handle->past_timestamp = objInfo.past_timestamp;
+        handle->access_in_windows = objInfo.feat;
+        if (evictionControllers_[pid][cid]->keepMetaInterval && 
+          evictionControllers_[pid][cid]->logical_time - objInfo.past_timestamp
+          > evictionControllers_[pid][cid]->window_size * evictionControllers_[pid][cid]->keepMetaInterval) {
+            handle->past_timestamp = 0;
+            handle->access_in_windows = 0;
+          }
+      } else {
+        handle->past_timestamp = 0;
+        handle->access_in_windows = 0;
+        // fresh item
+      }
+#endif
     }
 
   } else { // failed to allocate memory.
@@ -1526,7 +1549,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
 
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::Item*
-CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
+CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid, ObjectInfo& objInfoRet) {
   // Keep searching for a candidate until we were able to evict it
   // or until the search limit has been exhausted
   unsigned int searchTries = 0;
@@ -1559,6 +1582,11 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     auto ret = releaseBackToAllocator(*candidate, RemoveContext::kEviction,
                                       /* isNascent */ false, toRecycle);
     if (ret == ReleaseRes::kRecycled) {
+#ifdef META_IN_RAM
+      objInfoRet.key = ObjectInfo::key_to_int(toRecycle->getKey().toString());
+      objInfoRet.past_timestamp = toRecycle->past_timestamp;
+      objInfoRet.feat = toRecycle->access_in_windows;
+#endif
       return toRecycle;
     }
   }

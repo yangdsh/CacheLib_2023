@@ -425,10 +425,11 @@ bool Cache<Allocator>::insert(WriteHandle& handle) {
 
 template <typename Allocator>
 typename Cache<Allocator>::WriteHandle Cache<Allocator>::allocate(
-    PoolId pid, folly::StringPiece key, size_t size, uint32_t ttlSecs) {
+    PoolId pid, folly::StringPiece key, size_t size, 
+    ObjectInfo& objInfo, ObjectInfo& objInfoRet, uint32_t ttlSecs) {
   WriteHandle handle;
   try {
-    handle = cache_->allocate(pid, key, CacheValue::getSize(size), ttlSecs);
+    handle = cache_->allocate(pid, key, CacheValue::getSize(size), objInfo, objInfoRet, ttlSecs);
     if (handle) {
       CacheValue::initialize(handle->getMemory());
     }

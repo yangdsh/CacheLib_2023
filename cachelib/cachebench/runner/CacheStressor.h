@@ -204,7 +204,7 @@ class CacheStressor : public Stressor {
   // obtain aggregated throughput stats for the stress run so far.
   ThroughputStats aggregateThroughputStats() const override {
     ThroughputStats res{};
-    for (const auto& stats : throughputStats_) {
+    for (auto& stats : throughputStats_) {
       res += stats;
     }
 
@@ -509,7 +509,57 @@ class CacheStressor : public Stressor {
     }
 
     ++stats.set;
+#ifdef META_IN_RAM
+    ObjectInfo objInfo;
+    ObjectInfo objInfoRet;
+    {
+      uint64_t key_int = ObjectInfo::key_to_int(*key);
+      //std::unique_lock<folly::SharedMutex>{meta_mutexs_[key_int % 1024]};
+      std::lock_guard<std::mutex> l(metaMutex_[key_int % 1024]);
+      auto it = key_to_meta[key_int % 1024].find(key_int);
+      if (it != key_to_meta[key_int % 1024].end()) {
+        ++stats.readSSD;
+        // XLOG_EVERY_N(INFO, 1000) << objInfo.past_timestamp;
+        if ((objInfo.past_timestamp & 1) == 0) {
+          ++stats.readStaleSSD;
+          if (config_.updateMeta == 1)
+            objInfo = it->second;
+          // std::bitset<64> b(objInfo.feat);
+          // XLOG_EVERY_MS(INFO, 10000) << "Read Stale feat: " << b;
+        } else {
+          objInfo = it->second;
+          // std::bitset<64> b(objInfo.feat);
+          // XLOG_EVERY_MS(INFO, 10000) << "Read feat: " << b;
+        }
+      }
+    }
+    auto it = cache_->allocate(pid, *key, size, objInfo, objInfoRet, ttlSecs);
+    if (objInfoRet.key != -1) {  
+      //std::unique_lock<folly::SharedMutex>{meta_mutexs_[objInfoRet.key % 1024]};
+      std::lock_guard<std::mutex> l(metaMutex_[objInfoRet.key % 1024]);
+      auto objInfoRet_entry = key_to_meta[objInfoRet.key % 1024].find(objInfoRet.key);
+      if (objInfoRet_entry != key_to_meta[objInfoRet.key % 1024].end() && config_.updateMeta) {
+        objInfoRet.past_timestamp -= objInfoRet.past_timestamp & 1;
+        objInfoRet_entry->second = objInfoRet;
+        ++stats.updateSSD;
+        ++stats.writeSSD;
+      }
+      else {
+        objInfoRet.past_timestamp |= 1;
+        key_to_meta[objInfoRet.key % 1024].insert({objInfoRet.key, objInfoRet});
+        ++stats.writeSSD;
+      }
+    }
+    key_int = ObjectInfo::key_to_int(objInfoRet.key);
+    auto it = key_to_freq[key_int % 1024].find(key_int);
+    if (it != key_to_freq[key_int % 1024].end()) {
+      key_to_freq[key_int % 1024] += 1;
+    } else {
+      key_to_freq.insert({key_int % 1024, 1});
+    }
+#else
     auto it = cache_->allocate(pid, *key, size, ttlSecs);
+#endif
     if (it == nullptr) {
       ++stats.setFailure;
       return OpResultType::kSetFailure;
@@ -628,6 +678,10 @@ class CacheStressor : public Stressor {
 
   // Whether flash cache has been warmed up
   bool hasNvmCacheWarmedUp_{false};
+
+  std::unordered_map<uint64_t, ObjectInfo> key_to_meta[1024];
+  std::unordered_map<uint64_t, uint64_t> key_to_freq[1024];
+  mutable std::mutex metaMutex_[1024];
 };
 } // namespace cachebench
 } // namespace cachelib

@@ -30,7 +30,7 @@ upload_mode = False
 should_upload = True
 sharding_mode = False
 multi_mode = 0
-n_cores = 32
+n_cores = 24
 if upload_mode:
     # nsdi_cachelib_stress_replay_full_sleep3: 16 instances, 16 threads, sleep 87us
     # nsdi_cachelib_stress_replay_full_sleep4: 8 instances, 24 threads, sleep 87us
@@ -45,7 +45,7 @@ if upload_mode:
     #ts = "1680481369" # 2941604
     # 1680631155, 32xxxxxx
     # 1680631125, 29xxxxxx
-    ts = "1698784999"
+    ts = "1699754273"
 
 
 def to_task_config(task, task_id):
@@ -57,7 +57,7 @@ def to_task_config(task, task_id):
             if k in task:
                 config['cache_config'][k] = task[k]
         for k in ('numOps', 'numThreads', "wallTimeReplaySpeed", "cacheSetLatency"
-                  , 'mlReqUs'):
+                  , 'mlReqUs', 'updateMeta'):
             if k in task:
                 config['test_config'][k] = task[k]
         if 'ampFactor' in task:
@@ -245,7 +245,7 @@ def run(args: dict, tasks: list):
             else:
                 task_str = to_task_str(task, i)
             if multi_mode == 1:
-                task_str = f'taskset -c 16-31 sudo {task_str}'
+                task_str = f'taskset -c {n_cores}-{n_cores*2-1} sudo {task_str}'
             if multi_mode == -1:
                 task_str = f'taskset -c 0-{n_cores-1} sudo {task_str}'
             if multi_mode > 1:
@@ -255,8 +255,13 @@ def run(args: dict, tasks: list):
                 elif multi_mode > 8:
                     task_str = f'taskset -c {j*4}-{j*4+3} sudo {task_str}'
                 elif multi_mode <= 8:
-                    task_str = f'sudo blkdiscard {device} && taskset -c {j*8}-{j*8+7} sudo {task_str}'
-            env_str = f'LD_LIBRARY_PATH="{root}opt/cachelib/lib" && export LD_LIBRARY_PATH'
+                    task_str = f'taskset -c {j*8}-{j*8+7} sudo {task_str}'
+            try: device
+            except NameError: device = None
+            if device:
+                env_str = f'LD_LIBRARY_PATH="{root}opt/cachelib/lib" && export LD_LIBRARY_PATH && sudo blkdiscard {device}'
+            else:
+                env_str = f'LD_LIBRARY_PATH="{root}opt/cachelib/lib" && export LD_LIBRARY_PATH'
             task_str = f'bash --login -c "{env_str} && {task_str}" &> {temp_dir}/{ts}/{i}.log\n'
             if i == 0:
                 print(f'first task: {task_str}')
@@ -307,6 +312,8 @@ def upload_results(tasks, timestamp):
             # test_config:
             result_dict['trace_file'] = tasks[i]['trace_file']
             result_dict['numOps'] = tasks[i]['numOps']
+            if 'updateMeta' in tasks[i]:
+                result_dict['updateMeta'] = tasks[i]['updateMeta']
             if 'mlReqUs' in tasks[i]:
                 result_dict['mlReqUs'] = tasks[i]['mlReqUs']
             if 'wallTimeReplaySpeed' in tasks[i]:
@@ -351,6 +358,10 @@ def upload_results(tasks, timestamp):
             result_dict['ram_hit_ratio_list'] = []
             result_dict['nvm_hit_ratio_list'] = []
             result_dict['ops_list'] = []
+            result_dict['not_read_list'] = []
+            result_dict['not_write_list'] = []
+            result_dict['read_list'] = []
+            result_dict['write_list'] = []
             result_dict['time_list'] = []
             result_dict['throughput_list'] = []
             result_dict['target_throughput_list'] = []
@@ -432,13 +443,25 @@ def upload_results(tasks, timestamp):
                     result_dict['time_list'].append(v)'''
                 if 'ops completed. Hit Ratio' in line:
                     line = line.replace('%', '').replace(',', '').replace(')', '').replace('M', '')
-                    if len(line.split()) == 11:
+                    if len(line.split()) == 11 and ':' not in line.split()[-3]\
+                    and ':' not in line.split()[-1] and ':' not in line.split()[1]:
                         v = float(line.split()[-3])
                         result_dict['ram_hit_ratio_list'].append(v)
                         v = float(line.split()[-1])
                         result_dict['nvm_hit_ratio_list'].append(v)
                         v = float(line.split()[1])
                         result_dict['ops_list'].append(v)
+                if 'Metadata write/read/!write/!read' in line:
+                    line = line.replace('%', '').replace(',', '').replace(')', '').replace('M', '')
+                    if ':' not in line:
+                        v = float(line.split()[-1])
+                        result_dict['not_read_list'].append(v)
+                        v = float(line.split()[-2])
+                        result_dict['not_write_list'].append(v)
+                        v = float(line.split()[-3])
+                        result_dict['read_list'].append(v)
+                        v = float(line.split()[-4])
+                        result_dict['write_list'].append(v)
                 if line.startswith('set       :'):
                     line = line.replace(' ', '').replace('%', '')
                     hit_ratio = float(line.split(':')[-1])
