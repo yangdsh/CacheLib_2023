@@ -194,6 +194,8 @@ void CacheAllocator<CacheTrait>::initNvmCache(bool dramCacheAttached) {
 
   nvmCache_ = std::make_unique<NvmCacheT>(*this, *config_.nvmConfig, truncate,
                                           config_.itemDestructor);
+  if (config_.useEvictionControl && bfRatio > 0)
+    nvmCache_->makeBf(config_.size * 8 * bfRatio);
   if (!config_.cacheDir.empty()) {
     nvmCacheState_.clearPrevState();
   }
@@ -1466,7 +1468,8 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
               ? &toRecycle_->asChainedItem().getParentItem(compressor_)
               : toRecycle_;
 
-      // candidate_->markNvmEvicted();
+      if (meta_update_ssd)
+        candidate_->markNvmEvicted();
       const bool evictToNvmCache = shouldWriteToNvmCache(*candidate_);
       auto putToken = evictToNvmCache
                           ? nvmCache_->createPutToken(candidate_->getKey())
@@ -2401,6 +2404,8 @@ void CacheAllocator<CacheTrait>::createEvictionControllers(const PoolId pid) {
     // cout << (int)pid << ' ' << cid << endl;
   }
   debug_mode = evictionControllers_[pid][0]->debug_mode;
+  bfRatio = evictionControllers_[pid][0]->bfRatio;
+  meta_update_ssd = evictionControllers_[pid][0]->meta_update_ssd;
 }
 
 template <typename CacheTrait>

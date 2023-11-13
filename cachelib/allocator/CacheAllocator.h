@@ -2119,6 +2119,8 @@ class CacheAllocator : public CacheBase {
   std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
   int use_eviction_control = 0;
   int debug_mode = 0;
+  double bfRatio = 0;
+  int meta_update_ssd = 0;
   int cacheParsedCnt = 0;
   std::atomic<uint32_t> enqueue_token = 1;
   std::chrono::system_clock::time_point timePeriod;

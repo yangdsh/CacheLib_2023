@@ -37,6 +37,7 @@
 #include "cachelib/allocator/nvmcache/TombStones.h"
 #include "cachelib/allocator/nvmcache/WaitContext.h"
 #include "cachelib/common/AtomicCounter.h"
+#include "cachelib/common/BloomFilter.h"
 #include "cachelib/common/EventInterface.h"
 #include "cachelib/common/Exceptions.h"
 #include "cachelib/common/Hash.h"
@@ -131,6 +132,10 @@ class NvmCache {
            Config config,
            bool truncate,
            const ItemDestructor& itemDestructor);
+
+  void makeBf(uint64_t numBits) {
+    bf_ = std::make_unique<BloomFilter>(1, 4, numBits);
+  }
 
   // Look up item by key
   // @param key         key to lookup
@@ -461,6 +466,9 @@ class NvmCache {
   std::array<TombStones, kShards> tombstones_;
 
   const ItemDestructor itemDestructor_;
+
+  std::unique_ptr<BloomFilter> bf_;
+  std::hash<std::string> hasher_;
 
   mutable std::array<std::mutex, kShards> itemDestructorMutex_;
   // Used to track the keys of items present in NVM that should be excluded for

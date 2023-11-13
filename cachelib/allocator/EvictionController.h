@@ -716,8 +716,11 @@ class EvictionController {
             if (it.first == "window_size_factor") {
                 window_size_factor = stof(it.second);
             }
-            if (it.first == "ram_meta_mode") {
-                ram_meta_mode = stof(it.second);
+            if (it.first == "bfRatio") {
+                bfRatio = stof(it.second);
+            }
+            if (it.first == "meta_update_ssd") {
+                meta_update_ssd = stoi(it.second);
             }
             if (it.first == "reinsert_sample_rate") {
                 reinsert_sample_rate = stof(it.second);
@@ -864,10 +867,10 @@ class EvictionController {
                     to_reinsert = !to_reinsert;
                 }
                 if(!to_reinsert) {
-                    if (items_for_prediction[i]->get_is_reinserted() && ram_meta_mode) {
+                    // if (items_for_prediction[i]->get_is_reinserted() && ram_meta_mode) {
                         // generate negative training data
-                        _generateTrainingData(items_for_prediction[i], -1);
-                    }
+                    //    _generateTrainingData(items_for_prediction[i], -1);
+                    //}
                     evict_queue.enqueue(items_for_prediction[i]);
                 } else {
                     items_for_prediction[i]->set_is_reinserted(1);// already reinserted
@@ -931,8 +934,8 @@ class EvictionController {
             return true;
         } else {
             // sampled for training
-            if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
-                return true;
+            // if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
+            //     return true;
             if (repeat < reinsertion_per_eviction)
                 loosen_threshold();
             adjust_threshold();
@@ -1097,7 +1100,8 @@ class EvictionController {
     int batch_size_factor = 10;
     bool prediction_running = false;
     bool ml_mess_mode = 0;
-    bool ram_meta_mode = 0;
+    float bfRatio = 0;
+    int meta_update_ssd = 0;
     bool force_run = 0;
     int feature_cnt = 32;
     float window_size_factor = 10;

@@ -17,9 +17,10 @@ cache_types:
 
 trace_files:
   #- ibm05.tr
-  #- memc_200m_with_ssd.tr
+  - memc_200m_with_ssd.tr
   - fbobj_with_ssd.tr
-  #- config_kvcache_with_ssd.tr
+  - config_kvcache_with_ssd.tr
+  #- twitter_7_with_ssd.tr
   #- memc_200m.tr
   #- config_kvcache.tr
   #- wiki2019_remapped.tr

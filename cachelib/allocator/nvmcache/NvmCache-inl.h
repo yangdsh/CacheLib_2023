@@ -678,8 +678,12 @@ typename NvmCache<C>::WriteHandle NvmCache<C>::createItem(
   if (!it) {
     return nullptr;
   }
-  it->access_in_windows = nvmItem.access_in_windows_;
-  it->past_timestamp = nvmItem.past_timestamp_;
+  if (!bf_ || !bf_->couldExist(0, hasher_(key.toString()))) {
+    it->access_in_windows = nvmItem.access_in_windows_;
+    it->past_timestamp = nvmItem.past_timestamp_;
+    if (bf_)
+      bf_->set(0, hasher_(key.toString()));
+  }
 
   XDCHECK_LE(pBlob.data.size(), getStorageSizeInNvm(*it));
   XDCHECK_LE(pBlob.origAllocSize, pBlob.data.size());
