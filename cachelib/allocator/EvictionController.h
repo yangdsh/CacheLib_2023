@@ -716,8 +716,8 @@ class EvictionController {
             if (it.first == "window_size_factor") {
                 window_size_factor = stof(it.second);
             }
-            if (it.first == "ram_meta_mode") {
-                ram_meta_mode = stof(it.second);
+            if (it.first == "meta_update_ssd") {
+                meta_update_ssd = stoi(it.second);
             }
             if (it.first == "memory_window_size") {
                 memory_window_size = stoi(it.second);

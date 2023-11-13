@@ -20,14 +20,14 @@ trace_files:
   #- memc_200m_with_ssd.tr
   #- fbobj_with_ssd.tr
   #- config_kvcache_with_ssd.tr
-  #- memc_200m.tr
-  #- config_kvcache.tr
+  - memc_200m.tr
+  - config_kvcache.tr
   #- fbobj.tr
   #- wiki2019_remapped.tr
   #- twitter45_with_ssd.tr
   #- fb_follower_fbobj.tr
   #- fb_leader_assoc.tr
-  - twitter_7.tr
+  #- twitter_7.tr
   #- youtube.tr
   #- youtube_em.tr
   #- ts_rehash_1b.tr

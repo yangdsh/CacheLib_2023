@@ -14,15 +14,15 @@ import pymongo
 myclient = pymongo.MongoClient(
     "mongodb://dongshengy:dongshen20230809@nfs.yangdsh.lrbplus-pg0.clemson.cloudlab.us/dongshengyDB?authSource=admin")
 mydb = myclient["dongshengyDB"]
-env = "cloudlab"
+env = "cloudlab2"
 if env == "cloudlab":
     root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/"
     cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench"
     temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench"
 elif env == "cloudlab2":
-    root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/"
-    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench/cachebench"
-    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench"
+    root = "/nfs/CacheLib_2023/"
+    cachebench_loc = "/nfs/CacheLib_2023/build-cachelib/cachebench/cachebench"
+    temp_dir = "/nfs/CacheLib_2023/build-cachelib/cachebench"
 
 ts = int(time.time())
 debug_nfs = 0

@@ -550,12 +550,11 @@ class CacheStressor : public Stressor {
         ++stats.writeSSD;
       }
     }
-    key_int = ObjectInfo::key_to_int(objInfoRet.key);
-    auto it = key_to_freq[key_int % 1024].find(key_int);
-    if (it != key_to_freq[key_int % 1024].end()) {
-      key_to_freq[key_int % 1024] += 1;
+    auto it2 = key_to_freq[objInfoRet.key % 1024].find(objInfoRet.key);
+    if (it2 != key_to_freq[objInfoRet.key % 1024].end()) {
+      it2->second += 1;
     } else {
-      key_to_freq.insert({key_int % 1024, 1});
+      key_to_freq[objInfoRet.key % 1024].insert({objInfoRet.key % 1024, 1});
     }
 #else
     auto it = cache_->allocate(pid, *key, size, ttlSecs);
