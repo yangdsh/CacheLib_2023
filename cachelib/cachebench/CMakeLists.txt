@@ -45,6 +45,8 @@ else()
   target_compile_definitions(cachelib_cachebench PRIVATE SKIP_OPTION_SIZE_VERIFY)
 endif()
 
+#add_compile_options(-fsanitize=address)
+#add_link_options(-fsanitize=address)
 
 add_executable (cachebench main.cpp)
 target_link_libraries(cachebench cachelib_cachebench)

@@ -1456,9 +1456,9 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
         }
         //enqueue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
         //      std::chrono::system_clock::now() - timeBegin_c).count();
-        // if (!itr) {
-        //   itr.resetToBegin();
-        // }
+        if (!itr) {
+          itr.resetToBegin();
+        }
         break;
       }
       auto* candidate_ =
@@ -2403,8 +2403,8 @@ void CacheAllocator<CacheTrait>::createEvictionControllers(const PoolId pid) {
   }
   debug_mode = evictionControllers_[pid][0]->debug_mode;
   bfRatio = evictionControllers_[pid][0]->bfRatio;
-  if (bfRatio > 0)
-    nvmCache_->makeBf(config_.size * 8 * bfRatio);
+  if (bfRatio > 0 && pid == 0 && nvmCache_)
+    nvmCache_->makeBf(config_.size * bfRatio * 8);
   meta_update_ssd = evictionControllers_[pid][0]->meta_update_ssd;
 }
 

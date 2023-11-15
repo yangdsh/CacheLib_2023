@@ -361,11 +361,9 @@ public:
         }
     };
     Data input_data;
-    uint32_t train_feats[130000];
-    int32_t train_window_idxs[130000];
-    char lgbm_str[400000];
-    int lgbm_buffer_len = 400000;
-    int64_t lgbm_len;
+    uint32_t* train_feats;
+    uint32_t* train_window_idxs;
+    // char lgbm_str[400000];
     int batch_size;
     int belady_boundary_exp;
     int belady_boundary_range;
@@ -458,27 +456,32 @@ public:
 
     LightGBM(map<string, string> &params) {
         init_with_params(params);
+        train_feats = new uint32_t[batch_size];
+        train_window_idxs = new uint32_t[batch_size];
         input_data.labels.reserve(batch_size);
-        input_data.indptr.reserve(batch_size + 1);
         input_data.indptr.emplace_back(0);
-        // cout << "using lightgbm model" << endl;
-        //input_data.indices.reserve(batch_size * feature_cnt);
-        //input_data.data.reserve(batch_size * feature_cnt);
     }
 
-    int set_model(void* lgbm_str_) {
-        // cout << "set lightgbm model" << endl;
-        int num_iterations;
-        return LGBM_BoosterLoadModelFromString((char*)lgbm_str_, &num_iterations, &booster);
-    }
-
-    void delete_model() {
-        if (booster)
-            LGBM_BoosterFree(booster);
+    ~LightGBM() {
+        delete[] train_feats;
+        delete[] train_window_idxs;
     }
 
     void* get_model() {
-        return lgbm_str;
+        return booster;
+    }
+
+    int set_model(void* lgbm) {
+        booster = lgbm;
+        return 1;
+        // int num_iterations;
+        // return LGBM_BoosterLoadModelFromString((char*)lgbm_str_, &num_iterations, &booster);
+    }
+
+    void delete_model() {
+        if (booster) {
+            LGBM_BoosterFree(booster);
+        }
     }
 
     vector<double> get_model_importances() {
@@ -570,11 +573,13 @@ public:
                 break;
             }
         }
+        /*
         bool res = LGBM_BoosterSaveModelToString(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, 
             lgbm_buffer_len, &lgbm_len, lgbm_str);
         if (save_to_file) {
             LGBM_BoosterSaveModel(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, "model.txt");
         }
+        */
         // get_model_importances();
         LGBM_DatasetFree(trainData);
         if (debug_mode >= 1) {
@@ -583,7 +588,7 @@ public:
                 std::chrono::system_clock::now() - timeBegin).count() << endl;
         }
         clear();
-        return res;
+        return 1;
     }
         
     float info(bool to_print) {
@@ -787,15 +792,15 @@ class EvictionController {
                 process_id = stoi(it.second);
             }
         }
-        params["batch_size"] = to_string(training_batch_size);
-        training_model = build_ml_model();
-        training_model->for_training = true;
         params["batch_size"] = to_string(prediction_batch_size);
         prediction_model = build_ml_model();
         if (async_mode && use_eviction_control) {
             prediction_threads.push_back(
                 std::thread(&EvictionController::prediction_worker, this));
         }
+        params["batch_size"] = to_string(training_batch_size);
+        training_model = build_ml_model();
+        training_model->for_training = true;
         // std::cout << "done make EC: " << MLConfig << std::endl;
     }
 
@@ -1054,7 +1059,7 @@ class EvictionController {
             return;
         }
 
-        if (temp_training_model->set_model(temp_training_model->get_model()) == 0) {
+        if (1) {
             std::unique_lock lock(model_mutex_);
             prediction_model->delete_model();
             // cout << cid << " is trained" << endl;
