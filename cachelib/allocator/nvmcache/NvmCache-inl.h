@@ -678,11 +678,22 @@ typename NvmCache<C>::WriteHandle NvmCache<C>::createItem(
   if (!it) {
     return nullptr;
   }
-  if (!bf_ || !bf_->couldExist(0, hasher_(key.toString()))) {
+  if (!bf_ || (!bf_->couldExist(0, hasher_(key.toString()) && !bf_->couldExist(1, hasher_(key.toString()))) {
     it->access_in_windows = nvmItem.access_in_windows_;
     it->past_timestamp = nvmItem.past_timestamp_;
-    if (bf_)
-      bf_->set(0, hasher_(key.toString()));
+    if (bf_) {
+      bf_->set(bf_insert_id_, hasher_(key.toString()));
+      bf_insert_cnt_ += 1;
+      if (bf_insert_cnt_ * 3 > bf_size_) {
+        std::lock_guard<std::mutex> guard(bf_mutex_);
+        if (bf_insert_cnt_ * 3 > bf_size_) {
+          bf_->clear(1-bf_insert_id_);
+          bf_insert_id_ = 1-bf_insert_id_;
+          bf_insert_cnt_ = 0;
+          std::cout << "reset Bloom Filter" << std::endl;
+        }
+      }
+    }
   }
 
   XDCHECK_LE(pBlob.data.size(), getStorageSizeInNvm(*it));

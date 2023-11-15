@@ -134,7 +134,8 @@ class NvmCache {
            const ItemDestructor& itemDestructor);
 
   void makeBf(uint64_t numBits) {
-    bf_ = std::make_unique<BloomFilter>(1, 4, numBits);
+    bf_ = std::make_unique<BloomFilter>(2, 4, numBits);
+    bf_size_ = numBits;
   }
 
   // Look up item by key
@@ -469,6 +470,10 @@ class NvmCache {
 
   std::unique_ptr<BloomFilter> bf_;
   std::hash<std::string> hasher_;
+  uint64_t bf_insert_cnt_ = 0;
+  uint64_t bf_insert_id_ = 0;
+  uint64_t bf_size_ = 0;
+  std::mutex bf_mutex_;
 
   mutable std::array<std::mutex, kShards> itemDestructorMutex_;
   // Used to track the keys of items present in NVM that should be excluded for

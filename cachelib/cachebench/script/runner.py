@@ -45,7 +45,7 @@ if upload_mode:
     #ts = "1680481369" # 2941604
     # 1680631155, 32xxxxxx
     # 1680631125, 29xxxxxx
-    ts = "1698784999"
+    ts = "1699845915"
 
 
 def to_task_config(task, task_id):
@@ -432,7 +432,8 @@ def upload_results(tasks, timestamp):
                     result_dict['time_list'].append(v)'''
                 if 'ops completed. Hit Ratio' in line:
                     line = line.replace('%', '').replace(',', '').replace(')', '').replace('M', '')
-                    if len(line.split()) == 11:
+                    if len(line.split()) == 11 and ':' not in line.split()[-3] and ':' not in line.split()[-1]\
+                    and ':' not in line.split()[1]:
                         v = float(line.split()[-3])
                         result_dict['ram_hit_ratio_list'].append(v)
                         v = float(line.split()[-1])

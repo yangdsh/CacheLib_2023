@@ -478,7 +478,7 @@ inline typename LruAllocator::MMConfig makeMMConfig(CacheConfig const& config) {
                                 config.useCombinedLockForIterators);
 }
 
-// LRU
+// LRU2Q
 template <>
 inline typename Lru2QAllocator::MMConfig makeMMConfig(
     CacheConfig const& config) {
@@ -492,6 +492,19 @@ inline typename Lru2QAllocator::MMConfig makeMMConfig(
                                   config.lru2qColdPct,
                                   0,
                                   config.useCombinedLockForIterators);
+}
+
+// TinyLFU
+template <>
+inline typename TinyLFUAllocator::MMConfig makeMMConfig(
+    CacheConfig const& config) {
+  return TinyLFUAllocator::MMConfig(config.lruRefreshSec,
+                                  config.lruRefreshRatio,
+                                  config.lruUpdateOnWrite,
+                                  config.lruUpdateOnRead,
+                                  config.tryLockUpdate,
+                                  16,
+                                  1);
 }
 
 } // namespace cachebench

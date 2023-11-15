@@ -194,8 +194,6 @@ void CacheAllocator<CacheTrait>::initNvmCache(bool dramCacheAttached) {
 
   nvmCache_ = std::make_unique<NvmCacheT>(*this, *config_.nvmConfig, truncate,
                                           config_.itemDestructor);
-  if (config_.useEvictionControl && bfRatio > 0)
-    nvmCache_->makeBf(config_.size * 8 * bfRatio);
   if (!config_.cacheDir.empty()) {
     nvmCacheState_.clearPrevState();
   }
@@ -2405,6 +2403,8 @@ void CacheAllocator<CacheTrait>::createEvictionControllers(const PoolId pid) {
   }
   debug_mode = evictionControllers_[pid][0]->debug_mode;
   bfRatio = evictionControllers_[pid][0]->bfRatio;
+  if (bfRatio > 0)
+    nvmCache_->makeBf(config_.size * 8 * bfRatio);
   meta_update_ssd = evictionControllers_[pid][0]->meta_update_ssd;
 }
 
