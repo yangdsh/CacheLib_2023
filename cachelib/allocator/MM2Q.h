@@ -534,6 +534,10 @@ class MM2Q {
       return lruMutex_->lock_combine([this]() { return lru_.size(); });
     }
 
+    size_t getListSize(const T& node) noexcept {
+      return lru_.size();
+    }
+
     size_t sizeLocked() const noexcept {
       return lru_.size();
     }
@@ -542,9 +546,19 @@ class MM2Q {
       return;
     }
 
+    static bool isLRU() {return false;}
+
+    uint8_t getFreq(const T& node) {
+      return 0;
+    }
+
+    static void markReinserted(T& node) noexcept {return;}
+
     void moveToHeadLocked(T& node) noexcept;
 
-    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
+    size_t counterSize() {return 0;}
+
+    bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
     // Returns the eviction age stats. See CacheStats.h for details
     EvictionAgeStat getEvictionAgeStat(uint64_t projectedLength) const noexcept;

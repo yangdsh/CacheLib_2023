@@ -512,9 +512,15 @@ class MMTinyLFU {
       return;
     }
 
+    static bool isLRU() {return false;}
+
+    static void markReinserted(T& node) noexcept {
+      unmarkTiny(node);
+    }
+
     void moveToHeadLocked(T& node) noexcept;
 
-    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
+    bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
     // reconfigure the MMContainer: update refresh time according to current
     // tail age
@@ -523,6 +529,10 @@ class MMTinyLFU {
     size_t counterSize() const noexcept {
       LockHolder l(lruMutex_);
       return accessFreq_.getByteSize();
+    }
+
+    uint8_t getFreq(const T& node) {
+      return accessFreq_.getCount(hashNode(node));
     }
 
     // Returns the eviction age stats. See CacheStats.h for details
@@ -551,6 +561,10 @@ class MMTinyLFU {
 
     static LruType getLruType(const T& node) noexcept {
       return isTiny(node) ? LruType::Tiny : LruType::Main;
+    }
+
+    size_t getListSize(const T& node) noexcept {
+      return lru_.getList(getLruType(node)).size();
     }
 
    private:

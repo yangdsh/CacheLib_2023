@@ -413,6 +413,10 @@ class MMLru {
       return lruMutex_->lock_combine([this]() { return lru_.size(); });
     }
 
+    size_t getListSize(const T& node) noexcept {
+      return lru_.size();
+    }
+
     // returns the number of elements in the container
     size_t sizeLocked() const noexcept {
       return lru_.size();
@@ -422,9 +426,19 @@ class MMLru {
       return;
     }
 
+    static bool isLRU() {return true;}
+
+    uint8_t getFreq(const T& node) {
+      return 0;
+    }
+
+    static void markReinserted(T& node) noexcept {return;}
+
     void moveToHeadLocked(T& node) noexcept;
 
-    void moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
+    size_t counterSize() {return 0;}
+
+    bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
     // remove node from lru and adjust insertion points
     // @param node          node to remove

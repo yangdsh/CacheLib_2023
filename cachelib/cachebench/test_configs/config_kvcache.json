@@ -2,7 +2,7 @@
   "cache_config":
   {
     "allocator": "LRU",
-    "useEvictionControl": true,
+    "useEvictionControl": false,
     "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,0.1,debug_mode,2,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,1",
     "cacheSizeMB" : 4096,
     "poolRebalanceIntervalSec" : 0,

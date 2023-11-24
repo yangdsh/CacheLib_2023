@@ -173,6 +173,8 @@ class DList {
 
   void moveBatchToHead(T& nodeHead, T& nodeTail, int length) noexcept;
 
+  void removeBatchFromTail(T& nodeHead, T& nodeTail, int length) noexcept;
+
   T* getHead() const noexcept { return head_; }
   T* getTail() const noexcept { return tail_; }
 

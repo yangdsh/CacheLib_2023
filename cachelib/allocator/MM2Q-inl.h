@@ -262,15 +262,16 @@ template <typename T, MM2Q::Hook<T> T::*HookPtr>
 void MM2Q::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
   LruType type = getLruType(node);
   lru_.getList(type).remove(node);
-  markCold(node);
+  lru_.getList(LruType::Warm).linkAtHead(node);
+  unmarkCold(node);
   unmarkTail(node);
   unmarkHot(node);
-  lru_.getList(LruType::Cold).linkAtHead(node);
   rebalance();
 }
 
 template <typename T, MM2Q::Hook<T> T::*HookPtr>
-void MM2Q::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+bool MM2Q::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+  return true;
 }
 
 template <typename T, MM2Q::Hook<T> T::*HookPtr>

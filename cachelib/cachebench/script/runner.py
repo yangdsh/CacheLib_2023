@@ -245,17 +245,17 @@ def run(args: dict, tasks: list):
             else:
                 task_str = to_task_str(task, i)
             if multi_mode == 1:
-                task_str = f'taskset -c 16-31 sudo {task_str}'
-            if multi_mode == -1:
-                task_str = f'taskset -c 0-{n_cores-1} sudo {task_str}'
+                task_str = f'taskset -c 16-31 {task_str}'
+            if multi_mode == -1 or multi_mode == 0:
+                task_str = f'taskset -c 0-{n_cores-1} {task_str}'
             if multi_mode > 1:
                 j = i # % multi_mode
                 if multi_mode == 64:
-                    task_str = f'taskset -c {j} sudo {task_str}'
+                    task_str = f'taskset -c {j} {task_str}'
                 elif multi_mode > 8:
-                    task_str = f'taskset -c {j*4}-{j*4+3} sudo {task_str}'
+                    task_str = f'taskset -c {j*4}-{j*4+3} {task_str}'
                 elif multi_mode <= 8:
-                    task_str = f'sudo blkdiscard {device} && taskset -c {j*8}-{j*8+7} sudo {task_str}'
+                    task_str = f'sudo blkdiscard {device} && taskset -c {j*8}-{j*8+7} {task_str}'
             env_str = f'LD_LIBRARY_PATH="{root}opt/cachelib/lib" && export LD_LIBRARY_PATH'
             task_str = f'bash --login -c "{env_str} && {task_str}" &> {temp_dir}/{ts}/{i}.log\n'
             if i == 0:

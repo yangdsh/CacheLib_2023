@@ -252,6 +252,9 @@ void CacheAllocator<CacheTrait>::initWorkers() {
 template <typename CacheTrait>
 std::unique_ptr<MemoryAllocator> CacheAllocator<CacheTrait>::initAllocator(
     InitMemType type) {
+  if (config_.useEvictionControl) {
+    config_.size = config_.getCacheSize() * 0.99;
+  }
   if (type == InitMemType::kNone) {
     if (isOnShm_ == true) {
       return std::make_unique<MemoryAllocator>(getAllocatorConfig(config_),
@@ -1011,10 +1014,7 @@ void CacheAllocator<CacheTrait>::insertInMMContainer(Item& item) {
     throw std::runtime_error(folly::sformat(
         "Invalid state. Node {} was already in the container.", &item));
   }
-  if (config_.useEvictionControl) {
-    evictionControllers_[allocInfo.poolId][allocInfo.classId]
-        ->recordAccess(&item, config_.useEvictionControl);
-  }
+  recordAccessInEC(item, allocInfo.poolId, allocInfo.classId);
 }
 
 /**
@@ -1324,84 +1324,27 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
       (*stats_.evictionAttempts)[pid][cid].inc();
 
       auto* toRecycle_ = itr.get();
-      while (config_.useEvictionControl) {
+      if (config_.useEvictionControl) {
         auto mm_size = mmContainer.sizeLocked();
-        // itr.destroy(); // release lock
+        itr.destroy(); // release lock
         EvictionController<CacheTrait>* ec;
         ec = evictionControllers_[pid][cid];
 
-        if (ec->use_eviction_control == -1 && ec->enqueue_in_progress == 0) {
-          ec->enqueue_in_progress = 1;
-          Item* evict_pointer;
-          ec->evict_queue.try_dequeue(evict_pointer);
-          int enqueue_batch_size = ec->prediction_batch_size;
-          int candidate_queue_size = ec->candidate_queue.size_approx();
-          int evict_queue_size = ec->evict_queue.size_approx();
-          // insert candidates into the queue
-          if (!ec->prediction_running && candidate_queue_size < ec->prediction_batch_size
-              && evict_queue_size < ec->prediction_batch_size) {
-            int i = 0;
-            Item** items_for_prediction = new Item*[enqueue_batch_size];
-            auto itr_head = mmContainer.getEvictionIterator(false);
-            Item* nodeTail = itr_head.get();
-            itr_head.destroy();
-            Item* node = nodeTail;
-            for (; i < enqueue_batch_size; i ++, node = node->mmHook_.getNext(compressor_)) {
-              if (!node) {
-                std::cout << "node is null at class " << int(cid) << ' ' << i << ' ' <<  
-                    mmContainer.sizeLocked() << std::endl;
-                break;
-              }
-              n_reinsertion_queue ++;
-              items_for_prediction[i] = node;
-            }
-            for (int i = 0; i < enqueue_batch_size; i += ec->training_sample_rate) {
-              items_for_prediction[i]->set_is_sampled(1);
-            }
-            ec->candidate_queue.enqueue_bulk(items_for_prediction, enqueue_batch_size);
-            delete[] items_for_prediction;
-          }
-          if (candidate_queue_size >= ec->prediction_batch_size) {
-            ec->cv.notify_one();
-          }
-          ec->enqueue_in_progress = 0;
-        }
         if (ec->use_eviction_control > 0) {
           // get item to evict from the eviction queue
-          auto timeBegin_d = std::chrono::system_clock::now();
           Item* evict_pointer;
-          int repeats = 0;
-          while (1) {
-            if (ec->evict_queue.try_dequeue(evict_pointer)) {
-              n_eviction_queue ++;
-              if (evict_pointer != nullptr) {
-                toRecycle_ = evict_pointer;
-                // cout << toRecycle->getKey() << ' ' << toRecycle->getSize() << endl;
-              }
-              break;
-            } else {
-              n_evict_empty ++;
-              repeats ++;
-              if (!ec->force_run || 
-                  ec->candidate_queue.size_approx() < 2 * ec->prediction_batch_size ||
-                  ec->use_eviction_control == 0) 
-                break;
-              if (repeats > 0) {
-                int candidate_queue_size = ec->candidate_queue.size_approx();
-                int evict_queue_size = ec->evict_queue.size_approx();
-                std::cout << std::to_string(cid) + " " + std::to_string(evict_queue_size) + " "
-                  + std::to_string(candidate_queue_size) << std::endl;
-                break;
-              }
-              // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          if (ec->evict_queue.try_dequeue(evict_pointer)) {
+            n_eviction_queue ++;
+            ec->evict_queue_size -= 1;
+            if (evict_pointer != nullptr) {
+              toRecycle_ = evict_pointer;
+              // cout << toRecycle->getKey() << ' ' << toRecycle->getSize() << endl;
             }
+          } else {
+            n_evict_empty ++;
           }
-
-          dequeue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
-              std::chrono::system_clock::now() - timeBegin_d).count();
         }
 
-        //auto timeBegin_c = std::chrono::system_clock::now();
         if (ec->window_size == 0) {
           ec->window_size = mm_size * ec->window_size_factor;
           if (mm_size < 1024) {
@@ -1413,53 +1356,66 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
             ec->params["batch_size"] = to_string(ec->training_batch_size);
             std::cout << int(cid) << ' ' << ec->training_batch_size << std::endl;
           }
+          enqueue_token[cid].store(1);
         }
-        //if (true) { //} itr.evictMain()) 
-        if (ec->use_eviction_control > 0 && ec->enqueue_in_progress == 0) {
-          ec->enqueue_in_progress = 1;
+
+        if (ec->use_eviction_control > 0 && 
+              enqueue_token[cid].load() == 1 && enqueue_token[cid].exchange(0)) {
+          // auto timeBegin_c = std::chrono::system_clock::now();
           int enqueue_batch_size = ec->prediction_batch_size;
 
           //  ----------------------- async mode ----------------------------
-          int candidate_queue_size = ec->candidate_queue.size_approx();
-          int evict_queue_size = ec->evict_queue.size_approx();
-
           // insert candidates into the queue
-          if (!ec->prediction_running && candidate_queue_size < ec->prediction_batch_size
-              && evict_queue_size < ec->prediction_batch_size) {
-
+          if (!ec->prediction_running && ec->candidate_queue_size < enqueue_batch_size
+              && ec->evict_queue_size < enqueue_batch_size) {
+            // auto timeBegin_d = std::chrono::system_clock::now();
+            // std::cout << "try enqueue at class " << int(cid) << std::endl;
             int i = 0;
             Item** items_for_prediction = new Item*[enqueue_batch_size];
             itr.resetToBegin();
             Item* nodeTail = itr.get();
             Item* node = nodeTail;
-            for (; i < enqueue_batch_size; i ++, node = node->mmHook_.getPrev(compressor_)) {
-              if (!node) {
+            for (; i < enqueue_batch_size; i ++) {
+              /*if (!node) {
                 std::cout << "node is null at class " << int(cid) << ' ' << i << ' ' <<  
                     mmContainer.sizeLocked() << std::endl;
+                break;
               }
-              n_reinsertion_queue ++;
+              */
+              if (mmContainer.isLRU()) {
+                node = node->mmHook_.getPrev(compressor_);
+              } else {
+                node = itr.get();
+                mmContainer.moveToHeadLocked(*node);
+                itr.resetToBegin();
+              }
               items_for_prediction[i] = node;
             }
-            mmContainer.moveBatchToHeadLocked(*node, *nodeTail, i);
+            if (mmContainer.isLRU()) {
+              mmContainer.moveBatchToHeadLocked(*node, *nodeTail, i);
+            }
             itr.destroy();
             for (int i = 0; i < enqueue_batch_size; i += ec->training_sample_rate) {
               items_for_prediction[i]->set_is_sampled(1);
+              n_reinsertion_queue ++;
             }
             ec->candidate_queue.enqueue_bulk(items_for_prediction, enqueue_batch_size);
+            ec->candidate_queue_size += enqueue_batch_size;
             delete[] items_for_prediction;
+            // dequeue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
+            //   std::chrono::system_clock::now() - timeBegin_d).count();
           }
           // trigger prediction
-          if (candidate_queue_size >= ec->prediction_batch_size) {
-            ec->cv.notify_one();
+          if (ec->candidate_queue_size >= ec->prediction_batch_size) {
+            ec->cv.notify_all();
           }
-          ec->enqueue_in_progress = 0;
+          enqueue_token[cid].store(1);
+          // enqueue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
+          //     std::chrono::system_clock::now() - timeBegin_c).count();
         }
-        //enqueue_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
-        //      std::chrono::system_clock::now() - timeBegin_c).count();
         if (!itr) {
           itr.resetToBegin();
         }
-        break;
       }
       auto* candidate_ =
           toRecycle_->isChainedItem()
@@ -2011,7 +1967,6 @@ void CacheAllocator<CacheTrait>::render() {
     double total_build_time = 0;
     double total_predict_time = 0;
     for (ClassId cid = 0; cid < static_cast<ClassId>(allocSizes.size()); ++cid) {
-      if (cid != 1) continue; //????
       EvictionController<CacheTrait>* ec = evictionControllers_[pid][cid];
       total_build_time += ec->build_time;
       total_predict_time += ec->predict_time;
@@ -2025,7 +1980,7 @@ void CacheAllocator<CacheTrait>::render() {
   }
   std::cout << std::endl;
   
-  if (debug_mode >= 1) {
+  if (debug_mode > 1) {
     int pid = 0;
     const auto& pool = allocator_->getPool(pid);
     const auto& allocSizes = pool.getAllocSizes();
@@ -2067,7 +2022,7 @@ void CacheAllocator<CacheTrait>::render() {
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::findImpl(typename Item::Key key, AccessMode mode) {
-  if (debug_mode > 1 && ++cacheParsedCnt % 10000000 == 0)
+  if (debug_mode >= 1 && ++cacheParsedCnt % 10000000 == 0)
     render();
   auto handle = findInternalWithExpiration(key, AllocatorApiEvent::FIND);
   if (handle) {
@@ -2128,8 +2083,27 @@ void CacheAllocator<CacheTrait>::markUseful(const ReadHandle& handle,
 }
 
 template <typename CacheTrait>
+void CacheAllocator<CacheTrait>::recordAccessInEC(Item& item, uint8_t pid, uint8_t cid) {
+  if (!config_.useEvictionControl) {
+    return;
+  }
+  // auto timeBegin = std::chrono::system_clock::now();
+  if (pid == -1) {
+    const auto allocInfo =
+      allocator_->getAllocInfo(static_cast<const void*>(&item));
+    pid = allocInfo.poolId;
+    cid = allocInfo.classId;
+  }
+  evictionControllers_[pid][cid]
+    ->recordAccess(&item, config_.useEvictionControl);
+  // meta_update_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
+  //   std::chrono::system_clock::now() - timeBegin).count();
+}
+
+template <typename CacheTrait>
 bool CacheAllocator<CacheTrait>::recordAccessInMMContainer(Item& item,
                                                            AccessMode mode) {
+  auto timeBegin = std::chrono::system_clock::now();
   const auto allocInfo =
       allocator_->getAllocInfo(static_cast<const void*>(&item));
   (*stats_.cacheHits)[allocInfo.poolId][allocInfo.classId].inc();
@@ -2138,12 +2112,11 @@ bool CacheAllocator<CacheTrait>::recordAccessInMMContainer(Item& item,
   if (UNLIKELY(config_.trackRecentItemsForDump)) {
     ring_->trackItem(reinterpret_cast<uintptr_t>(&item), item.getSize());
   }
-  if (config_.useEvictionControl) {
-    evictionControllers_[allocInfo.poolId][allocInfo.classId]
-        ->recordAccess(&item, config_.useEvictionControl);
-  }
+  recordAccessInEC(item, allocInfo.poolId, allocInfo.classId);
 
   auto& mmContainer = getMMContainer(allocInfo.poolId, allocInfo.classId);
+  // find_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
+  //   std::chrono::system_clock::now() - timeBegin).count();
   return mmContainer.recordAccess(item, mode);
 }
 
@@ -2404,7 +2377,7 @@ void CacheAllocator<CacheTrait>::createEvictionControllers(const PoolId pid) {
   debug_mode = evictionControllers_[pid][0]->debug_mode;
   bfRatio = evictionControllers_[pid][0]->bfRatio;
   if (bfRatio > 0 && pid == 0 && nvmCache_)
-    nvmCache_->makeBf(config_.size * bfRatio * 8);
+    nvmCache_->makeBf(config_.getCacheSize() * bfRatio * 8 / 2);
   meta_update_ssd = evictionControllers_[pid][0]->meta_update_ssd;
 }
 

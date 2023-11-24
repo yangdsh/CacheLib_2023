@@ -32,7 +32,9 @@ twitter_7.tr:
     - 1024
     - 2048
     - 4096
-    - 8192
+    - 5120
+    - 6144
+    # - 8192
     #- 16384
     #- 32768
     # - 65536
@@ -48,8 +50,8 @@ twitter_7.tr:
 twitter_7_with_ssd.tr:
   cache_sizes:
     # MB
-    # - 128
-    # - 256
+    - 128
+    - 256
     - 512
     - 1024
     - 2048
@@ -375,7 +377,7 @@ fbobj_with_ssd.tr:
   numThreads: 
     - 32
   numOps:
-    - 1000000000
+    - 4000000000
   ampFactor:
     - 10
   json_test_config:

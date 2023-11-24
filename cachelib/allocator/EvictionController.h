@@ -211,9 +211,15 @@ public:
         return vector<double>();
     }
 
-    inline float my_faster_logf (float x)
+    inline float my_faster_logf (float val)
     {
-        return 31 - __builtin_clz(uint32_t(x));
+        union { float val; int32_t x; } u = { val };
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        u.x   &= ~(255 << 23);
+        u.x   += 127 << 23;
+        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
+        return (log_2);
+        // return 31 - __builtin_clz(uint32_t(x));
     }
 
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
@@ -313,9 +319,15 @@ public:
         vec_y.clear();
     }
 
-    inline float my_faster_logf (float x)
+    inline float my_faster_logf (float val)
     {
-        return 31 - __builtin_clz(uint32_t(x));
+        union { float val; int32_t x; } u = { val };
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        u.x   &= ~(255 << 23);
+        u.x   += 127 << 23;
+        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
+        return (log_2);
+        // return 31 - __builtin_clz(uint32_t(x));
     }
     
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
@@ -362,7 +374,7 @@ public:
     };
     Data input_data;
     uint32_t* train_feats;
-    uint32_t* train_window_idxs;
+    int32_t* train_window_idxs;
     // char lgbm_str[400000];
     int batch_size;
     int belady_boundary_exp;
@@ -449,15 +461,21 @@ public:
         training_params["num_threads"] = inference_threads;
     }
     
-    inline float my_faster_logf (float x)
+    inline float my_faster_logf (float val)
     {
-        return 31 - __builtin_clz(uint32_t(x));
+        union { float val; int32_t x; } u = { val };
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        u.x   &= ~(255 << 23);
+        u.x   += 127 << 23;
+        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
+        return (log_2);
+        // return 31 - __builtin_clz(uint32_t(x));
     }
 
     LightGBM(map<string, string> &params) {
         init_with_params(params);
         train_feats = new uint32_t[batch_size];
-        train_window_idxs = new uint32_t[batch_size];
+        train_window_idxs = new int32_t[batch_size];
         input_data.labels.reserve(batch_size);
         input_data.indptr.emplace_back(0);
     }
@@ -582,7 +600,7 @@ public:
         */
         // get_model_importances();
         LGBM_DatasetFree(trainData);
-        if (debug_mode >= 1) {
+        if (debug_mode >= 2) {
             cout << "number of 1s in feats: " << avg_label / n_in_batch << endl;
             cout << "train time: " << std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - timeBegin).count() << endl;
@@ -821,13 +839,18 @@ class EvictionController {
         // std::cout << "pred worker start" << std::endl;
         std::mutex mtx;
         std::unique_lock<std::mutex> lck(mtx);
-        while(cv.wait_for(lck, std::chrono::seconds(1000))!=std::cv_status::timeout) {
+        while(true) {
+            if (cv.wait_for(lck, std::chrono::seconds(1000))==std::cv_status::timeout)
+                continue;
             Item** items_for_prediction = new Item*[prediction_batch_size];
+            Item** items_for_eviction = new Item*[prediction_batch_size];
+            int eviction_cnt = 0;
             int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size);
+            candidate_queue_size -= cnt;
             // std::cout << "weak up" << std::endl;
             if (!trained() || evict_all_mode) {
-                for (int i = 0; i < cnt; i ++)
-                    evict_queue.enqueue(items_for_prediction[i]);
+                evict_queue.enqueue_bulk(items_for_prediction, cnt);
+                evict_queue_size += cnt;
                 delete[] items_for_prediction;
                 continue;
             }
@@ -876,12 +899,15 @@ class EvictionController {
                         // generate negative training data
                     //    _generateTrainingData(items_for_prediction[i], -1);
                     //}
-                    evict_queue.enqueue(items_for_prediction[i]);
+                    items_for_eviction[eviction_cnt++] = items_for_prediction[i];
                 } else {
                     items_for_prediction[i]->set_is_reinserted(1);// already reinserted
                 }
             }
+            evict_queue.enqueue_bulk(items_for_eviction, eviction_cnt);
+            evict_queue_size += eviction_cnt;
             prediction_running = false;
+            delete[] items_for_eviction;
             delete[] items_for_prediction;
             predict_time += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()
             - timeBegin).count();
@@ -963,20 +989,24 @@ class EvictionController {
                _generateTrainingData(item, current_time);
             }
             // clear prev round features
-            if (item->getKey() == "544637") {
+            /*if (item->getKey() == "544637") {
                 std::cout << "FEATURE of " << item->getKey() << ':' << item->access_in_windows << std::endl;
             }
+            */
             bitset<32> w(item->access_in_windows);
-            int past_window_idx = item->past_timestamp / window_size;
             int window_idx = current_time / window_size;
-            for (int i = past_window_idx + 1; i < window_idx; i ++)
-                w[i % feature_cnt] = 0;
+            if (item->past_timestamp != 0) {
+                int past_window_idx = item->past_timestamp / window_size;
+                for (int i = past_window_idx + 1; i < window_idx && i <= past_window_idx + feature_cnt; i ++)
+                    w[i % feature_cnt] = 0;
+            }
             // update features
             w[window_idx % feature_cnt] = 1;
             item->access_in_windows = w.to_ulong();
-            if (item->getKey() == "544637") {
+            /*if (item->getKey() == "544637") {
                 std::cout << "PASTTIME " << item->past_timestamp << ' ' << item->access_in_windows << std::endl;
             }
+            */
         } else {
             item->access_in_windows = 1;
         }
@@ -1051,7 +1081,7 @@ class EvictionController {
                 std::chrono::system_clock::now() - timeBegin).count();
         //cout << "training time: " << train_time << endl;
         
-        cout << "cid: " << int(cid) << endl;
+        // cout << "cid: " << int(cid) << endl;
         if (temp_training_model->info(debug_mode >= 3) == 0) {
             cout << "training ends with error!" << endl;
             delete temp_training_model; 
@@ -1124,7 +1154,7 @@ class EvictionController {
     vector<std::thread> prediction_threads;
     std::condition_variable cv;
     moodycamel::ConcurrentQueue<Item*> evict_queue, candidate_queue;
-    //std::atomic<bool> ready_for_predict = false;
+    std::atomic<int> candidate_queue_size = 0, evict_queue_size = 0;
     // mutable folly::cacheline_aligned<folly::DistributedMutex> mutex_;
     mutable std::mutex training_data_mutex_;
     mutable std::shared_mutex model_mutex_;

@@ -1,9 +1,9 @@
 debug: false
-dbcollection: cachelib_throughput_1106
+dbcollection: cachelib_throughput_1122_32cpu
 
 nodes:
-  #- 1/node1
-  #- 1/node2
+  - 1/yangdsh@amd247.utah.cloudlab.us
+  - 1/yangdsh@amd246.utah.cloudlab.us
   - 1/localhost
 
 cache_types:
@@ -13,12 +13,12 @@ cache_types:
   #- FIFO
   # - EC_adm
   # - LRU2Q
-  # - TinyLFU
+  #- TinyLFU
 
 trace_files:
   #- ibm05.tr
   - memc_200m_with_ssd.tr
-  - fbobj_with_ssd.tr
+  #- fbobj_with_ssd.tr
   - config_kvcache_with_ssd.tr
   - twitter_7_with_ssd.tr
   #- memc_200m.tr

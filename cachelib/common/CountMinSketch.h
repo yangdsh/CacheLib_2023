@@ -124,7 +124,7 @@ class CountMinSketchBase {
 } // namespace detail
 
 // By default, use uint32_t as count type.
-using CountMinSketch = detail::CountMinSketchBase<uint32_t>;
+using CountMinSketch = detail::CountMinSketchBase<uint8_t>;
 using CountMinSketch8 = detail::CountMinSketchBase<uint8_t>;
 using CountMinSketch16 = detail::CountMinSketchBase<uint16_t>;
 

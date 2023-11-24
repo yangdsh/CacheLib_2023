@@ -239,8 +239,9 @@ void MMLru::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
 }
 
 template <typename T, MMLru::Hook<T> T::*HookPtr>
-void MMLru::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+bool MMLru::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
   lru_.moveBatchToHead(nodeHead, nodeTail, length);
+  return true;
 }
 
 template <typename T, MMLru::Hook<T> T::*HookPtr>

@@ -2027,6 +2027,8 @@ class CacheAllocator : public CacheBase {
   // @return true   if successfully recorded in MMContainer
   bool recordAccessInMMContainer(Item& item, AccessMode mode);
 
+  void recordAccessInEC(Item& item, uint8_t pid, uint8_t cid);
+
   WriteHandle findChainedItem(const Item& parent) const;
 
   // Get the thread local version of the Stats
@@ -2091,30 +2093,30 @@ class CacheAllocator : public CacheBase {
   
   void render();
 
-  double allocate_time;
-  double insert_time;
-  double find_time;
-  double release_time;
-  double eviction_time;
-  double reinsertion_time;
-  double enqueue_time;
-  double dequeue_time;
-  double meta_update_time;
-  double prediction_time;
-  double training_time;
-  uint32_t n_allocate;
-  uint32_t n_insert;
-  uint32_t n_predict;
-  uint32_t average_skip;
-  uint32_t n_find;
-  uint32_t n_release;
-  uint32_t n_eviction;
-  uint32_t n_reinsertion;
-  uint32_t n_reinsertion_queue;
-  uint32_t n_eviction_queue;
-  uint32_t n_evict_out_cache;
-  uint32_t n_evict_empty;
-  std::atomic<uint32_t> n_miss;
+  double allocate_time = 0;
+  double insert_time = 0;
+  double find_time = 0;
+  double release_time = 0;
+  double eviction_time = 0;
+  double reinsertion_time = 0;
+  double enqueue_time = 0;
+  double dequeue_time = 0;
+  double meta_update_time = 0;
+  double prediction_time = 0;
+  double training_time = 0;
+  uint32_t n_allocate = 0;
+  uint32_t n_insert = 0;
+  uint32_t n_predict = 0;
+  uint32_t average_skip = 0;
+  uint32_t n_find = 0;
+  uint32_t n_release = 0;
+  uint32_t n_eviction = 0;
+  uint32_t n_reinsertion = 0;
+  uint32_t n_reinsertion_queue = 0;
+  uint32_t n_eviction_queue = 0;
+  uint32_t n_evict_out_cache = 0;
+  uint32_t n_evict_empty = 0;
+  std::atomic<uint32_t> n_miss = 0;
   // a filter per pool per class to decide whether an eviction candidate should be reinserted
   std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
   int use_eviction_control = 0;
@@ -2122,7 +2124,7 @@ class CacheAllocator : public CacheBase {
   double bfRatio = 0;
   int meta_update_ssd = 0;
   int cacheParsedCnt = 0;
-  std::atomic<uint32_t> enqueue_token = 1;
+  std::atomic<uint32_t> enqueue_token[100];
   std::chrono::system_clock::time_point timePeriod;
 
   // Whether the memory allocator for this cache allocator was created on shared

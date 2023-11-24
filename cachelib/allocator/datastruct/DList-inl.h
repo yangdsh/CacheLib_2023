@@ -167,16 +167,20 @@ void DList<T, HookPtr>::moveToHead(T& node) noexcept {
 }
 
 template <typename T, DListHook<T> T::*HookPtr>
-void DList<T, HookPtr>::moveBatchToHead(T& nodeHead, T& nodeTail, int length) noexcept {
-  if (&nodeHead == head_) {
-    return;
-  }
+void DList<T, HookPtr>::removeBatchFromTail(T& nodeHead, T& nodeTail, int length) noexcept {
   auto* const prev = getPrev(nodeHead);
   auto* const next = getNext(nodeTail);
   tail_ = prev;
   setNext(*prev, next);
   size_ -= length;
+}
 
+template <typename T, DListHook<T> T::*HookPtr>
+void DList<T, HookPtr>::moveBatchToHead(T& nodeHead, T& nodeTail, int length) noexcept {
+  if (&nodeHead == head_) {
+    return;
+  }
+  removeBatchFromTail(nodeHead, nodeTail, length);
   linkBatchAtHead(nodeHead, nodeTail, length);
 }
 

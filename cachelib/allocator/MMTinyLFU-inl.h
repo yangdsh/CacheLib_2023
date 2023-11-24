@@ -184,7 +184,15 @@ void MMTinyLFU::Container<T, HookPtr>::moveToHeadLocked(T& node) noexcept {
 }
 
 template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>
-void MMTinyLFU::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+bool MMTinyLFU::Container<T, HookPtr>::moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+  if (!lru_.getList(getLruType(nodeHead)).getPrev(nodeHead))
+    return true;
+  const auto expectedSize = config_.tinySizePercent * lru_.size() / 100;
+  if (length < expectedSize / 2)
+    return false;
+  lru_.getList(getLruType(nodeHead)).removeBatchFromTail(nodeHead, nodeTail, length);
+  lru_.getList(LruType::Main).linkBatchAtHead(nodeHead, nodeTail, length);
+  return true;
 }
 
 template <typename T, MMTinyLFU::Hook<T> T::*HookPtr>

@@ -70,6 +70,7 @@ class CacheStressor : public Stressor {
     maxAllocSize = cacheConfig.maxAllocSize;
     //** useEvictionController = cacheConfig.useEvictionControl;
     useNVM = cacheConfig.nvmCacheSizeMB;
+    cacheType = cacheConfig.allocator;
   
     // if either consistency check is enabled or if we want to move
     // items during slab release, we want readers and writers of chained
@@ -326,6 +327,9 @@ class CacheStressor : public Stressor {
         
         if (*(req.sizeBegin) > 8 && !useEvictionController)
           *(req.sizeBegin) -= 8;
+        if (cacheType == "TinyLFU") {
+          *(req.sizeBegin) += 24;
+        }
         
         //filter size larger than 4mb
         if (*(req.sizeBegin) >= maxAllocSize) {
@@ -582,6 +586,8 @@ class CacheStressor : public Stressor {
 
   const StressorConfig config_; // config for the stress run
 
+  std::string cacheType;
+
   std::vector<ThroughputStats> throughputStats_; // thread local stats
 
   std::unique_ptr<GeneratorBase> wg_; // workload generator
@@ -606,6 +612,7 @@ class CacheStressor : public Stressor {
 
   bool useEvictionController = 0;
   bool useNVM = 0;
+  uint64_t avgSize = 0;
   uint64_t maxAllocSize = 1024*1024;
 
   // Ticker that syncs the time according to trace timestamp.
