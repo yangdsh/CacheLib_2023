@@ -303,7 +303,7 @@ Cache<Allocator>::Cache(const CacheConfig& config,
   }
 
   if (config_.cacheMonitorFactory) {
-    monitor_ = config_.cacheMonitorFactory->create(*cache_);
+    //monitor_ = config_.cacheMonitorFactory->create(*cache_);
   }
 
   cleanupGuard.dismiss();
@@ -489,7 +489,7 @@ template <typename Allocator>
 typename Cache<Allocator>::ReadHandle Cache<Allocator>::find(Key key) {
   auto findFn = [&]() {
     util::LatencyTracker tracker;
-    if (FLAGS_report_api_latency) {
+    if (FLAGS_report_api_latency || true) {
       tracker = util::LatencyTracker(cacheFindLatency_);
     }
     // find from cache and wait for the result to be ready.
@@ -520,7 +520,7 @@ folly::SemiFuture<typename Cache<Allocator>::ReadHandle>
 Cache<Allocator>::asyncFind(Key key) {
   auto findFn = [&]() {
     util::LatencyTracker tracker;
-    if (FLAGS_report_api_latency) {
+    if (FLAGS_report_api_latency || true) {
       tracker = util::LatencyTracker(cacheFindLatency_);
     }
     // find from cache, don't wait for the result to be ready.
@@ -576,7 +576,7 @@ template <typename Allocator>
 typename Cache<Allocator>::WriteHandle Cache<Allocator>::findToWrite(Key key) {
   auto findToWriteFn = [&]() {
     util::LatencyTracker tracker;
-    if (FLAGS_report_api_latency) {
+    if (FLAGS_report_api_latency || true) {
       tracker = util::LatencyTracker(cacheFindLatency_);
     }
     // find from cache and wait for the result to be ready.
@@ -722,6 +722,7 @@ Stats Cache<Allocator>::getStats() const {
 
   ret.cacheAllocateLatencyNs = cacheStats.allocateLatencyNs;
   ret.cacheFindLatencyNs = cacheFindLatency_.estimate();
+  ret.cacheRequestLatencyNs = cacheRequestLatency_.estimate();
 
   // Populate counters.
   // TODO: Populate more counters that are interesting to cachebench.

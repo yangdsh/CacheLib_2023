@@ -32,6 +32,7 @@ twitter_7.tr:
     - 1024
     - 2048
     - 4096
+    - 5120
     - 6144
     # - 8192
     #- 16384
@@ -45,6 +46,30 @@ twitter_7.tr:
     - 10
   json_test_config:
     - cachelib/cachebench/test_configs/twitter7.json
+
+twitter_7_with_ssd.tr:
+  cache_sizes:
+    # MB
+    #- 64
+    - 128
+    - 256
+    - 512
+    - 1024
+    - 2048
+    - 3072
+    #- 4096
+    #- 8192
+    #- 16384
+    #- 32768
+    # - 65536
+  numThreads: 
+    - 32
+  numOps:
+    - 500000000
+  ampFactor:
+    - 5
+  json_test_config:
+    - cachelib/cachebench/test_configs/twitter_7_with_ssd.json
 
 config_kvcache.tr:
   cache_sizes:
@@ -280,7 +305,12 @@ memc_200m_with_ssd.tr:
     - 32768
     #- 65536
   numThreads: 
+    #- 2
+    #- 4
+    #- 8
+    #- 16
     - 32
+    #- 64
   numOps:
     #- 400000000
     - 1000000000
@@ -303,6 +333,8 @@ config_kvcache_with_ssd.tr:
     #- 32768
     #- 65536
   numThreads:
+    #- 8
+    #- 16
     - 32
   numOps:
     - 500000000
@@ -311,30 +343,6 @@ config_kvcache_with_ssd.tr:
     - 5
   json_test_config:
     - cachelib/cachebench/test_configs/config_kvcache_with_ssd.json
-
-twitter_7_with_ssd.tr:
-  cache_sizes:
-    # MB
-    #- 64
-    - 128
-    - 256
-    - 512
-    - 1024
-    - 2048
-    - 3072
-    #- 4096
-    #- 8192
-    #- 16384
-    #- 32768
-    # - 65536
-  numThreads: 
-    - 32
-  numOps:
-    - 500000000
-  ampFactor:
-    - 5
-  json_test_config:
-    - cachelib/cachebench/test_configs/twitter_7_with_ssd.json
 
 twitter45_with_ssd.tr:
   cache_sizes:

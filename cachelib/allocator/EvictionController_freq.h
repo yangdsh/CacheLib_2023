@@ -22,6 +22,7 @@
 #include <sys/syscall.h> 
 #include <sys/resource.h>
 #include "cachelib/common/concurrentqueue.h"
+#include "cachelib/common/CountMinSketch.h"
 #include "cachelib/allocator/CacheItem.h"
 #include "cachelib/allocator/CacheTraits.h"
 #include <mlpack/core.hpp>
@@ -41,12 +42,13 @@ namespace facebook {
 
 namespace cachelib {
 
-
 class MLModel {
 public:
     int n_in_batch = 0;
     bool for_training = false;
     int feature_cnt = 32;
+    int bit_feature_cnt = 32;
+    int use_feat_freq = 0;
 
     virtual void* get_model() =0;
 
@@ -54,9 +56,9 @@ public:
 
     virtual int set_model(void* model) =0;
 
-    virtual int emplace_back_training_sample(uint32_t, int window_idx, uint32_t future_interval) =0;
+    virtual int emplace_back_training_sample(uint64_t, uint64_t, int window_idx, uint32_t future_interval) =0;
 
-    virtual void emplace_back(uint32_t, int window_idx) =0;
+    virtual void emplace_back(uint64_t, uint64_t, int window_idx) =0;
 
     virtual bool train() =0;
 
@@ -214,7 +216,7 @@ public:
     inline float my_faster_logf (float val)
     {
         union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
         u.x   &= ~(255 << 23);
         u.x   += 127 << 23;
         log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
@@ -222,9 +224,9 @@ public:
         // return 31 - __builtin_clz(uint32_t(x));
     }
 
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
+    int emplace_back_training_sample(uint64_t access_in_windows, uint64_t freq, int window_idx, uint32_t future_interval) {
         vector<double> x;
-        std::bitset<32> feats(access_in_windows);
+        std::bitset<64> feats(access_in_windows);
         for (int j = window_idx; j > window_idx - feature_cnt; --j) {
             if (j >= 0) {
                 x.emplace_back(feats[j % feature_cnt]);
@@ -238,8 +240,8 @@ public:
         return 1;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
-        emplace_back_training_sample(access_in_windows, window_idx, 0);
+    void emplace_back(uint64_t access_in_windows, uint64_t freq, int window_idx) {
+        emplace_back_training_sample(access_in_windows, freq, window_idx, 0);
     }
 };
 
@@ -322,7 +324,7 @@ public:
     inline float my_faster_logf (float val)
     {
         union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
         u.x   &= ~(255 << 23);
         u.x   += 127 << 23;
         log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
@@ -330,9 +332,9 @@ public:
         // return 31 - __builtin_clz(uint32_t(x));
     }
     
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
+    int emplace_back_training_sample(uint64_t access_in_windows, uint64_t freq, int window_idx, uint32_t future_interval) {
         vector<double> x;
-        std::bitset<32> feats(access_in_windows);
+        std::bitset<64> feats(access_in_windows);
         for (int j = window_idx; j > window_idx - feature_cnt; --j) {
             if (j >= 0) {
                 x.emplace_back(feats[j % feature_cnt]);
@@ -347,8 +349,8 @@ public:
         return 1;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
-        emplace_back_training_sample(access_in_windows, window_idx, 0);
+    void emplace_back(uint64_t access_in_windows, uint64_t freq, int window_idx) {
+        emplace_back_training_sample(access_in_windows, freq, window_idx, 0);
     }
 
 
@@ -373,7 +375,8 @@ public:
         }
     };
     Data input_data;
-    uint32_t* train_feats;
+    uint64_t* train_feats;
+    uint8_t* train_feats_freq;
     int32_t* train_window_idxs;
     // char lgbm_str[400000];
     int batch_size;
@@ -443,10 +446,18 @@ public:
                 save_to_file = stoi(it.second);
             }
             if (it.first == "window_cnt") {
-                feature_cnt = stoi(it.second);
+                bit_feature_cnt = stoi(it.second);
+            }
+            if (it.first == "use_feat_freq") {
+                use_feat_freq = stoi(it.second);
             }
         }
-        // cout << "ML config: " << int(n_deltas) << endl;
+        if (use_feat_freq == 1)
+            feature_cnt = bit_feature_cnt + 1;
+        else if (use_feat_freq == 2)
+            feature_cnt = 1;
+        else
+            feature_cnt = bit_feature_cnt;
 
         /*if (n_extra_fields) {
             string categorical_feature = to_string(n_deltas + 1);
@@ -464,7 +475,7 @@ public:
     inline float my_faster_logf (float val)
     {
         union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        register float log_2 = (float)(((u.x >> 23) & 255) - 128);
         u.x   &= ~(255 << 23);
         u.x   += 127 << 23;
         log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
@@ -474,7 +485,8 @@ public:
 
     LightGBM(map<string, string> &params) {
         init_with_params(params);
-        train_feats = new uint32_t[batch_size];
+        train_feats = new uint64_t[batch_size];
+        train_feats_freq = new uint8_t[batch_size];
         train_window_idxs = new int32_t[batch_size];
         input_data.labels.reserve(batch_size);
         input_data.indptr.emplace_back(0);
@@ -483,6 +495,7 @@ public:
     ~LightGBM() {
         delete[] train_feats;
         delete[] train_window_idxs;
+        delete[] train_feats_freq;
     }
 
     void* get_model() {
@@ -518,23 +531,32 @@ public:
         return importances;
     }
 
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
+    int emplace_back_training_sample(uint64_t access_in_windows, uint64_t freq, int window_idx, uint32_t future_interval) {
         train_feats[n_in_batch] = access_in_windows;
+        if (use_feat_freq)
+            train_feats_freq[n_in_batch] = freq;
         train_window_idxs[n_in_batch] = window_idx;
         input_data.labels.push_back(my_faster_logf(future_interval+1));
         n_in_batch ++;
         return 0;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
-        std::bitset<32> feats(access_in_windows);
+    void emplace_back(uint64_t access_in_windows, uint64_t freq, int window_idx) {
+        std::bitset<64> feats(access_in_windows);
         int32_t counter = input_data.indptr.back();
-        for (int j = window_idx; j > window_idx - feature_cnt && j >= 0; --j) {
-            if (feats[j % feature_cnt]) {
-                input_data.data.emplace_back(1);
-                input_data.indices.emplace_back(window_idx - j);
-                counter ++;
+        if (use_feat_freq != 2) {
+            for (int j = window_idx; j > window_idx - bit_feature_cnt && j >= 0; --j) {
+                if (feats[j % bit_feature_cnt]) {
+                    input_data.data.emplace_back(1);
+                    input_data.indices.emplace_back(window_idx - j);
+                    counter ++;
+                }
             }
+        }
+        if (use_feat_freq) {
+            input_data.data.emplace_back(freq);
+            input_data.indices.emplace_back(feature_cnt - 1);
+            counter ++;
         }
         input_data.indptr.push_back(counter);
         n_in_batch ++;
@@ -548,14 +570,21 @@ public:
         }
         int32_t counter = input_data.indptr.back();
         for (int i = 0; i < n_in_batch; i ++) {
-            std::bitset<32> feats(train_feats[i]);
-            for (int j = train_window_idxs[i]; j > train_window_idxs[i] - feature_cnt && j >= 0; --j) {
-                if (feats[j % feature_cnt]) {
-                    input_data.data.emplace_back(1);
-                    input_data.indices.emplace_back(train_window_idxs[i] - j);
-                    counter ++;
-                    avg_label ++;
+            if (use_feat_freq != 2) {
+                std::bitset<64> feats(train_feats[i]);
+                for (int j = train_window_idxs[i]; j > train_window_idxs[i] - bit_feature_cnt && j >= 0; --j) {
+                    if (feats[j % bit_feature_cnt]) {
+                        input_data.data.emplace_back(1);
+                        input_data.indices.emplace_back(train_window_idxs[i] - j);
+                        counter ++;
+                        avg_label ++;
+                    }
                 }
+            }
+            if (use_feat_freq) {
+                input_data.data.emplace_back(train_feats_freq[i]);
+                input_data.indices.emplace_back(feature_cnt - 1);
+                counter ++;
             }
             input_data.indptr.push_back(counter);
         }
@@ -598,8 +627,7 @@ public:
             LGBM_BoosterSaveModel(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, "model.txt");
         }
         */
-        if (input_data.labels.size() >= 130000 && debug_mode)
-            get_model_importances();
+        // get_model_importances();
         LGBM_DatasetFree(trainData);
         if (debug_mode >= 2) {
             cout << "number of 1s in feats: " << avg_label / n_in_batch << endl;
@@ -627,7 +655,7 @@ public:
         }
         clear();
         for (int i = 0; i < 32; i ++) {
-            emplace_back(1, i);
+            emplace_back(1, 0, i);
         }
         auto scores = predict();
         for (int i = 0; i < scores.size(); i ++) {
@@ -697,6 +725,12 @@ class EvictionController {
         for (auto& p:train_threads) {
             p.join();
         }
+        if (accessFreq_)
+            delete accessFreq_;
+        if (prediction_model)
+            delete prediction_model;
+        if (training_model)
+            delete training_model;
     }
 
     MLModel* build_ml_model() {
@@ -809,9 +843,12 @@ class EvictionController {
             }
             if (it.first == "process_id") {
                 process_id = stoi(it.second);
-            } 
-            if (it.first == "S3_mode") {
-                S3_mode = stoi(it.second);
+            }
+            if (it.first == "window_cnt") {
+                bit_feature_cnt = stoi(it.second);
+            }
+            if (it.first == "use_feat_freq") {
+                use_feat_freq = static_cast<bool>(stoi(it.second));
             }
         }
         params["batch_size"] = to_string(prediction_batch_size);
@@ -840,22 +877,25 @@ class EvictionController {
         struct timespec tim, tim2;
         tim.tv_sec = 0;
         tim.tv_nsec = block_pred_in_nano;
-        // std::cout << "pred worker start" << std::endl;
+        Item** items_for_prediction = new Item*[prediction_batch_size*2];
+        Item** items_for_eviction = new Item*[prediction_batch_size*2];
         std::mutex mtx;
         std::unique_lock<std::mutex> lck(mtx);
         while(true) {
             if (cv.wait_for(lck, std::chrono::seconds(1000))==std::cv_status::timeout)
                 continue;
-            Item** items_for_prediction = new Item*[prediction_batch_size];
-            Item** items_for_eviction = new Item*[prediction_batch_size];
+            if (use_feat_freq && !accessFreq_) {
+                maxWindowSize_ = 32 * window_size;
+                accessFreq_ = new facebook::cachelib::util::CountMinSketch8(//window_size, 4);
+                    folly::nextPowTwo(maxWindowSize_ / 5), 4);
+            }
             int eviction_cnt = 0;
-            int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size);
+            int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size*2);
             candidate_queue_size -= cnt;
             // std::cout << "weak up" << std::endl;
             if (!trained() || evict_all_mode) {
                 evict_queue.enqueue_bulk(items_for_prediction, cnt);
                 evict_queue_size += cnt;
-                delete[] items_for_prediction;
                 continue;
             }
             prediction_running = true;
@@ -863,26 +903,24 @@ class EvictionController {
             auto timeBegin = std::chrono::system_clock::now();
             std::shared_lock lock(model_mutex_);
             float avg_score = 0, avg_TTA = 0, avg_delta0 = 0, avg_freq = 0;
-            bool decisions[1024];
             // predict TTA in a batch
             for (int i = 0; i < cnt; i ++) {
                 Item* item = items_for_prediction[i];
+                if (item->getKey() == "544637") {
+                    std::cout << "pred " << item->getKey() << std::endl;
+                    print_item(item);
+                }
                 if (item == NULL) {
                     std::cout << "node is null at prediction" << std::endl;
                     break;
                 }
                 int window_idx = item->past_timestamp / window_size;
-                bitset<32> w(item->access_in_windows);
-                if (w[window_idx % feature_cnt] != 1) {
-                    ;
+                uint64_t feat = item->access_in_windows;
+                uint64_t freq = 0;
+                if (use_feat_freq) {
+                    freq = getFreq(item);
                 }
-                if (item->get_item_flag() && S3_mode == 1) {
-                    w[window_idx % feature_cnt] = 1;
-                } else if (S3_mode == 1) {
-                    w[window_idx % feature_cnt] = 0;
-                }
-                decisions[i] = item->get_item_flag();
-                prediction_model->emplace_back(w.to_ulong(), window_idx);
+                prediction_model->emplace_back(feat, freq, window_idx);
             }
             build_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now() - timeBegin).count();
@@ -905,14 +943,7 @@ class EvictionController {
                     TTA = (item_logical_time - past_timestamp - TTA)
                         * TTA_diff_scaling;
 
-                bool to_reinsert;
-                if (S3_mode == 2 && decisions[i] == 0)
-                    to_reinsert = decisions[i];
-                else if (S3_mode == 3)
-                    to_reinsert = decisions[i];
-                else
-                    to_reinsert = ifReinsertItem(TTA);
-                
+                bool to_reinsert = ifReinsertItem(TTA);
                 if (ml_mess_mode) {
                     to_reinsert = !to_reinsert;
                 }
@@ -929,8 +960,6 @@ class EvictionController {
             evict_queue.enqueue_bulk(items_for_eviction, eviction_cnt);
             evict_queue_size += eviction_cnt;
             prediction_running = false;
-            delete[] items_for_eviction;
-            delete[] items_for_prediction;
             predict_time += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()
             - timeBegin).count();
             if (debug_mode >= 4 && rand() % 10 == 0)
@@ -943,13 +972,15 @@ class EvictionController {
                      << endl;
             prediction_model->clear();
         }
+        delete[] items_for_prediction;
+        delete[] items_for_eviction;
     }
 
     void adjust_threshold() {
         if (float(reinserted_cnt) / (examined_cnt-reinserted_cnt) < reinsertion_per_eviction)
-            threshold *= (1 + threshold_changing_rate * 0.5);
+            loosen_threshold();
         else
-            threshold *= (1 - threshold_changing_rate * 0.5);
+            tighten_threshold();
     }
     
     void loosen_threshold() {
@@ -989,12 +1020,55 @@ class EvictionController {
             // sampled for training
             // if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
             //     return true;
-            if (repeat < reinsertion_per_eviction)
-                loosen_threshold();
+            // if (repeat < reinsertion_per_eviction)
+            //     loosen_threshold();
             adjust_threshold();
             repeat = 0;
             return false;
         }
+    }
+
+    static size_t hashNode(Item* node) noexcept {
+      return folly::hasher<folly::StringPiece>()(node->getKey());
+    }
+
+    void updateFreq(Item* node) {
+        if (!accessFreq_)
+            return;
+        accessFreq_->increment(hashNode(node));
+        ++windowSize_;
+        // decay counts every maxWindowSize_ .  This avoids having items that were
+        // accessed frequently (were hot) but aren't being accessed anymore (are
+        // cold) from staying in cache forever.
+        if (windowSize_ == maxWindowSize_ * 4) {
+            windowSize_ >>= 1;
+            accessFreq_->decayCountsBy(kDecayFactor);
+        }
+    }
+
+    uint8_t getFreq(Item* node) {
+        if (!accessFreq_)
+            return 0;
+        float freq = accessFreq_->getCount(hashNode(node));
+        //freq = freq / ((1 + (float)windowSize_ / maxWindowSize_) / 2);
+        //XLOG_EVERY_MS(INFO, 1000) << (int)(uint8_t)(freq >= 255 ? 255 : (uint8_t)freq) 
+        //  << ' ' << (int)accessFreq_->getCount(hashNode(node));
+        return freq >= 255 ? 255 : (uint8_t)freq;
+    }
+ 
+    void print_item(Item* item) {
+        uint32_t sample_time = item->past_timestamp;
+        uint32_t window_idx = sample_time / window_size;
+        uint32_t cur_idx = logical_time / window_size;
+        std::bitset<64> feats(item->access_in_windows);
+        uint64_t freq = getFreq(item);
+        std::cout << freq << ' ';
+        for (int j = window_idx; j > window_idx - bit_feature_cnt && j >= 0; --j) {
+            if (feats[j % bit_feature_cnt]) {
+                std::cout << j << ',' << window_idx - j << ' ';
+            }
+        }
+        std::cout << endl;
     }
 
     void recordAccess(Item* item, bool enable_training) {
@@ -1011,24 +1085,22 @@ class EvictionController {
                _generateTrainingData(item, current_time);
             }
             // clear prev round features
-            /*if (item->getKey() == "544637") {
-                std::cout << "FEATURE of " << item->getKey() << ':' << item->access_in_windows << std::endl;
+            if (item->getKey() == "544637") {
+                std::cout << "record " << item->getKey() << std::endl;
+                print_item(item);
             }
-            */
-            bitset<32> w(item->access_in_windows);
+            //if (cid == 7)
+            //    XLOG_EVERY_MS(INFO, 1000) <<  (float)threshold / window_size;
+            bitset<64> w(item->access_in_windows);
             int window_idx = current_time / window_size;
             if (item->past_timestamp != 0) {
                 int past_window_idx = item->past_timestamp / window_size;
-                if (window_idx - past_window_idx >= feature_cnt) {
-                    w.reset();
-                } else {
-                    for (int i = past_window_idx + 1; i < window_idx && i <= past_window_idx + feature_cnt; i ++)
-                        w[i % feature_cnt] = 0;
-                }
+                for (int i = past_window_idx + 1; i < window_idx && i <= past_window_idx + bit_feature_cnt; i ++)
+                    w[i % bit_feature_cnt] = 0;
             }
             // update features
-            w[window_idx % feature_cnt] = 1;
-            item->access_in_windows = w.to_ulong();
+            w[window_idx % bit_feature_cnt] = 1;
+            item->access_in_windows = w.to_ullong();
             /*if (item->getKey() == "544637") {
                 std::cout << "PASTTIME " << item->past_timestamp << ' ' << item->access_in_windows << std::endl;
             }
@@ -1036,22 +1108,25 @@ class EvictionController {
         } else {
             item->access_in_windows = 1;
         }
+        if (use_feat_freq) {
+            updateFreq(item);
+        }
         item->set_past_timestamp(current_time);
         // cout << "after record: " << current_time << ' ' << item->past_timestamp << endl;
     }
 
     void _generateTrainingData(Item* item, uint32_t current_time) {
-        if (item->get_is_sampled() > 0 && window_size > 0 && item->past_timestamp != 0 && !generate_in_progress) {
-            generate_in_progress = 1;
-            std::lock_guard<std::mutex> guard(training_data_mutex_);
-            if (item->get_is_sampled() == 0) {
-                generate_in_progress = 0;
-                return;
+        if (item->get_is_sampled() > 0 && window_size > 0 && item->past_timestamp != 0) {
+            if (item->getKey() == "544637") {
+                std::cout << "train " << item->getKey() << std::endl;
+                print_item(item);
             }
+            std::lock_guard<std::mutex> guard(training_data_mutex_);
+            if (item->get_is_sampled() == 0)
+                return;
             item->set_is_sampled(0);
             uint32_t sample_time = item->past_timestamp;
             uint32_t tta_label = current_time - sample_time;
-/*
             if (current_time == -1) {
                 if (logical_time - sample_time > threshold)
                     tta_label = (logical_time - sample_time) * 2;
@@ -1065,19 +1140,16 @@ class EvictionController {
                     victim_tta += tta_label;
                 }
             }
-*/
             item->set_is_reinserted(0);
-            bitset<32> w(item->access_in_windows);
-            int window_idx = sample_time / window_size;
-            if (item->get_item_flag() && S3_mode == 1) {
-                w[window_idx % feature_cnt] = 1;
-            } else if (S3_mode == 1) {
-                w[window_idx % feature_cnt] = 0;
+            uint64_t feat = item->access_in_windows;
+            uint64_t freq = 0;
+            if (use_feat_freq) {
+                uint64_t freq = getFreq(item);
             }
-            training_model->emplace_back_training_sample(w.to_ulong(), window_idx, tta_label);
+            training_model->emplace_back_training_sample(feat, freq,
+                sample_time / window_size, tta_label);
             training_batch_cnt += 1;
             maybe_train();
-            generate_in_progress = 0;
         }
     }
 
@@ -1176,19 +1248,20 @@ class EvictionController {
     float bfRatio = 0;
     int meta_update_ssd = 0;
     bool force_run = 0;
-    int S3_mode = 0;
-    int feature_cnt = 32;
-    float window_size_factor = 10;
+    int bit_feature_cnt = 32;
+    bool use_feat_freq = 0;
+    float window_size_factor = 1;
     int training_sample_rate = 5;
     int reinsert_sample_rate = 5;
+    float kDecayFactor = 0.5;
     
     // running variables
     MLModel* training_model = NULL;
     MLModel* temp_training_model = NULL;
     MLModel* prediction_model = NULL;
+    facebook::cachelib::util::CountMinSketch8* accessFreq_ = NULL;
     bool training_in_progress = 0;
     bool enqueue_in_progress = 0;
-    bool generate_in_progress = 0;
     bool isTrained = false;
     vector<std::thread> train_threads;
     vector<std::thread> prediction_threads;
@@ -1208,8 +1281,9 @@ class EvictionController {
     std::atomic<uint32_t> logical_time = 0;
     int cid;
     bool evict_all_mode = 0;
-    bool is_mess_period = 0;
     int window_size = 0;
+    uint32_t maxWindowSize_ = 0;
+    uint32_t windowSize_ = 0;
 
     // stat
     uint32_t examined_cnt = 0;

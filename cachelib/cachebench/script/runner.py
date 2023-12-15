@@ -17,15 +17,19 @@ mydb = myclient["dongshengyDB"]
 env = "cloudlab"
 if env == "cloudlab":
     root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/"
-    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench"
+    cachebench_loc_ = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench"
+    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench_"
+    os.system(f"cp {cachebench_loc_} {cachebench_loc}")
     temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench"
 elif env == "cloudlab2":
-    root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/"
-    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench/cachebench"
-    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib/build-cachelib/cachebench"
+    root = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/"
+    cachebench_loc_ = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/build-cachelib/cachebench/cachebench"
+    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/build-cachelib/cachebench/cachebench_"
+    os.system(f"cp {cachebench_loc_} {cachebench_loc}")
+    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/build-cachelib/cachebench"
 
 ts = int(time.time())
-debug_nfs = 0
+debug_nfs = 2
 upload_mode = False
 should_upload = True
 sharding_mode = False
@@ -77,7 +81,7 @@ def to_task_config(task, task_id):
                 device = '/dev/nvme0n1p4'
             else:
                 device = '/dev/nvme1n1'
-            config['cache_config']['nvmCachePaths'] = [device]
+            config['cache_config']['nvmCachePaths'] = ['/dev/nvme1n1', '/dev/nvme0n1p4']
         config['test_config']['numOps'] = int(
             config['test_config']['numOps'] / config['test_config']['numThreads'])
         fout = open(f'{temp_dir}/{ts}/{task_id}.json', 'w')
@@ -285,15 +289,15 @@ def get_multi_results(tasks, timestamp):
                     line = line.replace(' ', '').replace('%', '')
                     hit_ratio = float(line.split(':')[-1])
                     set_throughput += float(line.replace(',', '').split(':')[1].split('/')[0])
-                if line.startswith('Total Request Latency avg'):
+                if line.startswith('Cache Request API Latency avg'):
                     result_dict['avg latency'] = float(line.split()[-2])
-                if line.startswith('Total Request Latency p50      :'):
+                if line.startswith('Cache Request API Latency p50      :'):
                     result_dict['p50 latency'] = float(line.split()[-2])
-                if line.startswith('Total Request Latency p90      :'):
+                if line.startswith('Cache Request API Latency p90      :'):
                     result_dict['p90 latency'] = float(line.split()[-2])
-                if line.startswith('Total Request Latency p99      :'):
+                if line.startswith('Cache Request API Latency p99      :'):
                     result_dict['p99 latency'] = float(line.split()[-2])
-                if line.startswith('Total Request Latency p999     :'):
+                if line.startswith('Cache Request API Latency p999     :'):
                     result_dict['p999 latency'] = float(line.split()[-2])
     print(throughput, set_throughput)
 

@@ -79,6 +79,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
     TTL,
     OP_TIME,
     CACHE_HIT,
+    NEXT,
     END
   };
 
@@ -90,6 +91,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
       {SampleFields::OP_COUNT, false, {"op_count"}},
       {SampleFields::SIZE, true, {"size"}}, /* required */
       {SampleFields::CACHE_HIT, false, {"cache_hits"}},
+      {SampleFields::NEXT, false, {"next"}},
       {SampleFields::TTL, false, {"ttl"}}};
 
   explicit KVReplayGenerator(const StressorConfig& config)

@@ -403,16 +403,6 @@ class CACHELIB_PACKED_ATTR CacheItem {
   uint32_t getOffsetForMemory() const noexcept;
 
   /**
-   * Functions to set, unset and get bits
-   */
-  template <RefcountWithFlags::Flags flagBit>
-  void setFlag() noexcept;
-  template <RefcountWithFlags::Flags flagBit>
-  void unSetFlag() noexcept;
-  template <RefcountWithFlags::Flags flagBit>
-  bool isFlagSet() const noexcept;
-
-  /**
    * The following are the data members of CacheItem
    *
    * Hooks to access and mm containers are public since other parts of the
@@ -431,6 +421,9 @@ class CACHELIB_PACKED_ATTR CacheItem {
   bool get_is_reinserted() const {
     return past_timestamp & 2;
   }
+  bool get_item_flag() const {
+    return past_timestamp & 4;
+  }
   void set_is_reinserted(bool val) {
     past_timestamp = past_timestamp - (past_timestamp&2);
     past_timestamp = past_timestamp | (val << 1);
@@ -440,7 +433,11 @@ class CACHELIB_PACKED_ATTR CacheItem {
     past_timestamp = past_timestamp | val;
   }
   void set_past_timestamp(uint32_t past_timestamp_) {
-    past_timestamp = past_timestamp_ - (past_timestamp_&3);
+    past_timestamp = past_timestamp_ - (past_timestamp_&7);
+  }
+  void set_item_flag(int val) {
+    past_timestamp = past_timestamp - (past_timestamp&4);
+    past_timestamp = past_timestamp | (val << 2);
   }
 
   using AccessContainer = typename CacheTrait::AccessType::template Container<
@@ -453,6 +450,16 @@ class CACHELIB_PACKED_ATTR CacheItem {
 
   using MMContainer =
       typename CacheTrait::MMType::template Container<Item, &Item::mmHook_>;
+  
+  /**
+   * Functions to set, unset and get bits
+   */
+  template <RefcountWithFlags::Flags flagBit>
+  void setFlag() noexcept;
+  template <RefcountWithFlags::Flags flagBit>
+  void unSetFlag() noexcept;
+  template <RefcountWithFlags::Flags flagBit>
+  bool isFlagSet() const noexcept;
 
  protected:
   // Refcount for the item and also flags on the items state

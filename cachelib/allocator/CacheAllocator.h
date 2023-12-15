@@ -2124,7 +2124,8 @@ class CacheAllocator : public CacheBase {
   double bfRatio = 0;
   int meta_update_ssd = 0;
   int cacheParsedCnt = 0;
-  std::atomic<uint32_t> enqueue_token[100];
+  std::atomic<uint32_t> enqueue_token[100], tta_distribution[32], current_timestamp = 0;
+  #define TRUE_TTA
   std::chrono::system_clock::time_point timePeriod;
 
   // Whether the memory allocator for this cache allocator was created on shared
@@ -2308,6 +2309,7 @@ extern template class CacheAllocator<LruCacheTrait>;
 extern template class CacheAllocator<LruCacheWithSpinBucketsTrait>;
 extern template class CacheAllocator<Lru2QCacheTrait>;
 extern template class CacheAllocator<TinyLFUCacheTrait>;
+extern template class CacheAllocator<S3FIFOCacheTrait>;
 
 // CacheAllocator with an LRU eviction policy
 // LRU policy can be configured to act as a segmented LRU as well
@@ -2330,5 +2332,7 @@ using Lru2QAllocator = CacheAllocator<Lru2QCacheTrait>;
 // inserted items. And eventually it will onl admit items that are accessed
 // beyond a threshold into the warm cache.
 using TinyLFUAllocator = CacheAllocator<TinyLFUCacheTrait>;
+
+using S3FIFOAllocator = CacheAllocator<S3FIFOCacheTrait>;
 } // namespace cachelib
 } // namespace facebook

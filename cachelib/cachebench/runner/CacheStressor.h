@@ -329,6 +329,9 @@ class CacheStressor : public Stressor {
           *(req.sizeBegin) -= 8;
         if (cacheType == "TinyLFU") {
           *(req.sizeBegin) += 24;
+        } 
+        if (cacheType == "S3FIFO") {
+          *(req.sizeBegin) += 8;
         }
         
         //filter size larger than 4mb
@@ -352,6 +355,7 @@ class CacheStressor : public Stressor {
           op = OpType::kGet;
         }
         OpResultType result(OpResultType::kNop);
+        util::LatencyTracker tracker = util::LatencyTracker(cache_->cacheRequestLatency_);
         switch (op) {
         case OpType::kLoneSet:
         case OpType::kSet: {

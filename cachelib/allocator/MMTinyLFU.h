@@ -522,6 +522,8 @@ class MMTinyLFU {
 
     bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
+    void getCandidates(T** nodeList, int& length) noexcept {;}
+
     // reconfigure the MMContainer: update refresh time according to current
     // tail age
     void reconfigureLocked(const Time& currTime);

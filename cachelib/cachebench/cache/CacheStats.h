@@ -89,6 +89,7 @@ struct Stats {
 
   util::PercentileStats::Estimates cacheAllocateLatencyNs;
   util::PercentileStats::Estimates cacheFindLatencyNs;
+  util::PercentileStats::Estimates cacheRequestLatencyNs;
 
   double nvmReadLatencyMicrosP50{0};
   double nvmReadLatencyMicrosP90{0};
@@ -251,6 +252,7 @@ struct Stats {
               fmtLatency("p100", latency.p100);
             };
 
+        printLatencies("Cache Request API latency", cacheRequestLatencyNs);
         printLatencies("Cache Find API latency", cacheFindLatencyNs);
         printLatencies("Cache Allocate API latency", cacheAllocateLatencyNs);
       }

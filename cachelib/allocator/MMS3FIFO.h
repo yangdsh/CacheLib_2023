@@ -30,7 +30,7 @@
 #include "cachelib/allocator/Cache.h"
 #include "cachelib/allocator/CacheStats.h"
 #include "cachelib/allocator/Util.h"
-#include "cachelib/allocator/datastruct/DList.h"
+#include "cachelib/allocator/datastruct/S3FIFOList.h"
 #include "cachelib/allocator/memory/serialize/gen-cpp2/objects_types.h"
 #include "cachelib/common/CompilerUtils.h"
 #include "cachelib/common/Mutex.h"
@@ -48,111 +48,34 @@ namespace cachelib {
 // 2. Delayed promotion. Items get promoted at most once in any lru refresh time
 // window. lru refresh time and lru refresh ratio controls this internval
 // length.
-class MMLru {
+class MMS3FIFO {
  public:
   // unique identifier per MMType
   static const int kId;
 
   // forward declaration;
   template <typename T>
-  using Hook = DListHook<T>;
-  using SerializationType = serialization::MMLruObject;
-  using SerializationConfigType = serialization::MMLruConfig;
-  using SerializationTypeContainer = serialization::MMLruCollection;
+  // using Hook = DListHook<T>;
+  using Hook = AtomicDListHook<T>;
+  using SerializationType = serialization::MMS3FIFOObject;
+  using SerializationConfigType = serialization::MMS3FIFOConfig;
+  using SerializationTypeContainer = serialization::MMS3FIFOCollection;
 
-  // This is not applicable for MMLru, just for compile of cache allocator
-  enum LruType { NumTypes };
+  // This is not applicable for MMS3FIFO, just for compile of cache allocator
+  enum LruType { Prob, Main, NumTypes };
 
-  // Config class for MMLru
+  // Config class for MMS3FIFO
   struct Config {
     // create from serialized config
     explicit Config(SerializationConfigType configState)
-        : Config(*configState.lruRefreshTime(),
-                 *configState.lruRefreshRatio(),
-                 *configState.updateOnWrite(),
-                 *configState.updateOnRead(),
-                 *configState.tryLockUpdate(),
-                 static_cast<uint8_t>(*configState.lruInsertionPointSpec())) {}
+        : Config(*configState.updateOnWrite(), *configState.updateOnRead()) {}
 
     // @param time        the LRU refresh time in seconds.
     //                    An item will be promoted only once in each lru refresh
     //                    time depite the number of accesses it gets.
     // @param udpateOnW   whether to promote the item on write
     // @param updateOnR   whether to promote the item on read
-    Config(uint32_t time, bool updateOnW, bool updateOnR)
-        : Config(time, updateOnW, updateOnR, false, 0) {}
-
-    // @param time        the LRU refresh time in seconds.
-    //                    An item will be promoted only once in each lru refresh
-    //                    time depite the number of accesses it gets.
-    // @param udpateOnW   whether to promote the item on write
-    // @param updateOnR   whether to promote the item on read
-    // @param tryLockU    whether to use a try lock when doing update.
-    // @param ipSpec      insertion point spec, which is the inverse power of
-    //                    length from the end of the queue. For example, value 1
-    //                    means the insertion point is 1/2 from the end of LRU;
-    //                    value 2 means 1/4 from the end of LRU.
-    Config(uint32_t time, bool updateOnW, bool updateOnR, uint8_t ipSpec)
-        : Config(time, updateOnW, updateOnR, false, ipSpec) {}
-
-    Config(uint32_t time,
-           bool updateOnW,
-           bool updateOnR,
-           bool tryLockU,
-           uint8_t ipSpec)
-        : Config(time, 0., updateOnW, updateOnR, tryLockU, ipSpec) {}
-
-    // @param time        the LRU refresh time in seconds.
-    //                    An item will be promoted only once in each lru refresh
-    //                    time depite the number of accesses it gets.
-    // @param ratio       the lru refresh ratio. The ratio times the
-    //                    oldest element's lifetime in warm queue
-    //                    would be the minimum value of LRU refresh time.
-    // @param udpateOnW   whether to promote the item on write
-    // @param updateOnR   whether to promote the item on read
-    // @param tryLockU    whether to use a try lock when doing update.
-    // @param ipSpec      insertion point spec, which is the inverse power of
-    //                    length from the end of the queue. For example, value 1
-    //                    means the insertion point is 1/2 from the end of LRU;
-    //                    value 2 means 1/4 from the end of LRU.
-    Config(uint32_t time,
-           double ratio,
-           bool updateOnW,
-           bool updateOnR,
-           bool tryLockU,
-           uint8_t ipSpec)
-        : Config(time, ratio, updateOnW, updateOnR, tryLockU, ipSpec, 0) {}
-
-    // @param time        the LRU refresh time in seconds.
-    //                    An item will be promoted only once in each lru refresh
-    //                    time depite the number of accesses it gets.
-    // @param ratio       the lru refresh ratio. The ratio times the
-    //                    oldest element's lifetime in warm queue
-    //                    would be the minimum value of LRU refresh time.
-    // @param udpateOnW   whether to promote the item on write
-    // @param updateOnR   whether to promote the item on read
-    // @param tryLockU    whether to use a try lock when doing update.
-    // @param ipSpec      insertion point spec, which is the inverse power of
-    //                    length from the end of the queue. For example, value 1
-    //                    means the insertion point is 1/2 from the end of LRU;
-    //                    value 2 means 1/4 from the end of LRU.
-    // @param mmReconfigureInterval   Time interval for recalculating lru
-    //                                refresh time according to the ratio.
-    Config(uint32_t time,
-           double ratio,
-           bool updateOnW,
-           bool updateOnR,
-           bool tryLockU,
-           uint8_t ipSpec,
-           uint32_t mmReconfigureInterval)
-        : Config(time,
-                 ratio,
-                 updateOnW,
-                 updateOnR,
-                 tryLockU,
-                 ipSpec,
-                 mmReconfigureInterval,
-                 false) {}
+    Config(bool updateOnW, bool updateOnR) : Config(updateOnW, updateOnR, 0) {}
 
     // @param time        the LRU refresh time in seconds.
     //                    An item will be promoted only once in each lru refresh
@@ -171,23 +94,11 @@ class MMLru {
     //                                refresh time according to the ratio.
     // useCombinedLockForIterators    Whether to use combined locking for
     //                                withEvictionIterator
-    Config(uint32_t time,
-           double ratio,
-           bool updateOnW,
-           bool updateOnR,
-           bool tryLockU,
-           uint8_t ipSpec,
-           uint32_t mmReconfigureInterval,
-           bool useCombinedLockForIterators)
-        : defaultLruRefreshTime(time),
-          lruRefreshRatio(ratio),
-          updateOnWrite(updateOnW),
+    Config(bool updateOnW, bool updateOnR, uint32_t mmReconfigureInterval)
+        : updateOnWrite(updateOnW),
           updateOnRead(updateOnR),
-          tryLockUpdate(tryLockU),
-          lruInsertionPointSpec(ipSpec),
           mmReconfigureIntervalSecs(
-              std::chrono::seconds(mmReconfigureInterval)),
-          useCombinedLockForIterators(useCombinedLockForIterators) {}
+              std::chrono::seconds(mmReconfigureInterval)) {}
 
     Config() = default;
     Config(const Config& rhs) = default;
@@ -202,13 +113,13 @@ class MMLru {
     // threshold value in seconds to compare with a node's update time to
     // determine if we need to update the position of the node in the linked
     // list. By default this is 60s to reduce the contention on the lru lock.
-    uint32_t defaultLruRefreshTime{60};
-    uint32_t lruRefreshTime{defaultLruRefreshTime};
+    // uint32_t defaultLruRefreshTime{60};
+    // uint32_t lruRefreshTime{defaultLruRefreshTime};
 
     // ratio of LRU refresh time to the tail age. If a refresh time computed
     // according to this ratio is larger than lruRefreshtime, we will adopt
     // this one instead of the lruRefreshTime set.
-    double lruRefreshRatio{0.};
+    // double lruRefreshRatio{0.};
 
     // whether the lru needs to be updated on writes for recordAccess. If
     // false, accessing the cache for writes does not promote the cached item
@@ -246,7 +157,7 @@ class MMLru {
   template <typename T, Hook<T> T::*HookPtr>
   struct Container {
    private:
-    using LruList = DList<T, HookPtr>;
+    using FIFOList = S3FIFOList<T, HookPtr>;
     using Mutex = folly::DistributedMutex;
     using LockHolder = std::unique_lock<Mutex>;
     using PtrCompressor = typename T::PtrCompressor;
@@ -257,28 +168,25 @@ class MMLru {
    public:
     Container() = default;
     Container(Config c, PtrCompressor compressor)
-        : compressor_(std::move(compressor)),
-          lru_(compressor_),
+        :  // : compressor_(std::move(compressor)),
+          qdlist_(std::move(compressor)),
           config_(std::move(c)) {
-      lruRefreshTime_ = config_.lruRefreshTime;
       nextReconfigureTime_ =
           config_.mmReconfigureIntervalSecs.count() == 0
               ? std::numeric_limits<Time>::max()
               : static_cast<Time>(util::getCurrentTimeSec()) +
                     config_.mmReconfigureIntervalSecs.count();
     }
-    Container(serialization::MMLruObject object, PtrCompressor compressor);
+    Container(serialization::MMS3FIFOObject object, PtrCompressor compressor);
 
     Container(const Container&) = delete;
     Container& operator=(const Container&) = delete;
-
-    using Iterator = typename LruList::Iterator;
 
     // context for iterating the MM container. At any given point of time,
     // there can be only one iterator active since we need to lock the LRU for
     // iteration. we can support multiple iterators at same time, by using a
     // shared ptr in the context for the lock holder in the future.
-    class LockedIterator : public Iterator {
+    class LockedIterator {
      public:
       // noncopyable but movable.
       LockedIterator(const LockedIterator&) = delete;
@@ -286,55 +194,63 @@ class MMLru {
 
       LockedIterator(LockedIterator&&) noexcept = default;
 
+      // moves the LockedIterator forward and backward. Calling ++ once the
+      // LockedIterator has reached the end is undefined.
+      LockedIterator& operator++() {
+        candidate_ = qdlist_->getEvictionCandidate();
+        return *this;
+      }
+      LockedIterator& operator--() { throw std::logic_error("Not implemented"); }
+
+      T* operator->() const noexcept { return candidate_; }
+      T& operator*() const noexcept { return *candidate_; }
+
+      explicit operator bool() const noexcept { return candidate_ != nullptr; }
+
+      T* get() const noexcept { return candidate_; }
+
+      // Invalidates this iterator
+      void reset() noexcept {
+        // Set index to before first list
+        // index_ = kInvalidIndex;
+        // Point iterator to first list's rend
+        // currIter_ = mlist_.lists_[0]->rend();
+      }
+
       // 1. Invalidate this iterator
       // 2. Unlock
       void destroy() {
-        Iterator::reset();
         if (l_.owns_lock()) {
           l_.unlock();
         }
       }
 
       // Reset this iterator to the beginning
-      void resetToBegin() {
+      void resetToBegin() noexcept {
         if (!l_.owns_lock()) {
           l_.lock();
         }
-        Iterator::resetToBegin();
-      }
-
-      void want_main_iter() {
-        return;
-      }
-
-      void want_tiny_iter() {
-        return;
-      }
-
-      void unwant_main_iter() {
-        return;
-      }
-
-      void unwant_tiny_iter() {
-        return;
-      }
-
-      bool evictMain() {
-        return true;
       }
 
      private:
-      // private because it's easy to misuse and cause deadlock for MMLru
+      // private because it's easy to misuse and cause deadlock for MMS3FIFO
       LockedIterator& operator=(LockedIterator&&) noexcept = default;
 
       // create an lru iterator with the lock being held.
-      LockedIterator(LockHolder l, const Iterator& iter) noexcept;
+      LockedIterator(LockHolder l, FIFOList* qdlist) {
+        l_ = std::move(l);
+        qdlist_ = qdlist;
+        candidate_ = qdlist_->getEvictionCandidate();
+      }
+
+      FIFOList* qdlist_;
+
+      T* candidate_;
+      
+      LockHolder l_;
 
       // only the container can create iterators
       friend Container<T, HookPtr>;
-
-      // lock protecting the validity of the iterator
-      LockHolder l_;
     };
 
     // records the information that the node was accessed. This could bump up
@@ -374,7 +290,7 @@ class MMLru {
     // iterator will be advanced to the next node after removing the node
     //
     // @param it    Iterator that will be removed
-    void remove(Iterator& it) noexcept;
+    void remove(LockedIterator& it) noexcept;
 
     // replaces one node with another, at the same position
     //
@@ -389,12 +305,12 @@ class MMLru {
     // Obtain an iterator that start from the tail and can be used
     // to search for evictions. This iterator holds a lock to this
     // container and only one such iterator can exist at a time
-    LockedIterator getEvictionIterator(bool fromTail = true) const noexcept;
+    LockedIterator getEvictionIterator() noexcept;
 
     // Execute provided function under container lock. Function gets
     // iterator passed as parameter.
-    template <typename F>
-    void withEvictionIterator(F&& f);
+    // template <typename F>
+    // void withEvictionIterator(F&& f);
 
     // get copy of current config
     Config getConfig() const;
@@ -410,23 +326,20 @@ class MMLru {
 
     // returns the number of elements in the container
     size_t size() const noexcept {
-      return lruMutex_->lock_combine([this]() { return lru_.size(); });
+      return lruMutex_->lock_combine([this]() { return qdlist_.size(); });
     }
 
-    size_t getListSize(const T& node) noexcept {
-      return lru_.size();
-    }
-
-    // returns the number of elements in the container
+        // returns the number of elements in the container
     size_t sizeLocked() const noexcept {
-      return lru_.size();
+      return qdlist_.size();
     }
 
     void setECMode() {
+      qdlist_.setECMode();
       return;
     }
 
-    static bool isLRU() {return true;}
+    static bool isLRU() {return false;}
 
     uint8_t getFreq(const T& node) {
       return 0;
@@ -434,18 +347,17 @@ class MMLru {
 
     static void markReinserted(T& node) noexcept {return;}
 
-    void moveToHeadLocked(T& node) noexcept;
+    void moveToHeadLocked(T& node) noexcept {return;}
 
     size_t counterSize() {return 0;}
 
-    bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
+    bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept {
+      return true;
+    }
 
-    void getCandidates(T** nodeList, int& length) noexcept {;}
-
-    // remove node from lru and adjust insertion points
-    // @param node          node to remove
-    void removeLocked(T& node);
-    
+    void getCandidates(T** nodeList, int& length) noexcept {
+      qdlist_.getCandidates(nodeList, length);
+    }
 
     // Returns the eviction age stats. See CacheStats.h for details
     EvictionAgeStat getEvictionAgeStat(uint64_t projectedLength) const noexcept;
@@ -456,13 +368,18 @@ class MMLru {
     // present. Any modification of this object afterwards will result in an
     // invalid, inconsistent state for the serialized data.
     //
-    serialization::MMLruObject saveState() const noexcept;
+    serialization::MMS3FIFOObject saveState() const noexcept;
 
     // return the stats for this container.
     MMContainerStat getStats() const noexcept;
 
-    static LruType getLruType(const T& /* node */) noexcept {
-      return LruType{};
+    LruType getLruType(const T& node) noexcept {
+      if (isProbationary(node)) {
+        return LruType::Prob;
+      } else {
+        XDCHECK(isMain(node));
+        return LruType::Main;
+      }
     }
 
    private:
@@ -477,29 +394,18 @@ class MMLru {
       (node.*HookPtr).setUpdateTime(time);
     }
 
-    // This function is invoked by remove or record access prior to
-    // removing the node (or moving the node to head) to ensure that
-    // the node being moved is not the insertion point and if it is
-    // adjust it accordingly.
-    void ensureNotInsertionPoint(T& node) noexcept;
+    // remove node from lru and adjust insertion points
+    //
+    // @param node          node to remove
+    // @param doRebalance     whether to do rebalance in this remove
+    void removeLocked(T& node) noexcept;
 
-    // update the lru insertion point after doing an insert or removal.
-    // We need to ensure the insertionPoint_ is set to the correct node
-    // to maintain the tailSize_, for the next insertion.
-    void updateLruInsertionPoint() noexcept;
-
-    // Bit MM_BIT_0 is used to record if the item is in tail. This
-    // is used to implement LRU insertion points
-    void markTail(T& node) noexcept {
-      node.template setFlag<RefFlags::kMMFlag0>();
-    }
-
-    void unmarkTail(T& node) noexcept {
-      node.template unSetFlag<RefFlags::kMMFlag0>();
-    }
-
-    bool isTail(T& node) const noexcept {
+    bool isProbationary(const T& node) const noexcept {
       return node.template isFlagSet<RefFlags::kMMFlag0>();
+    }
+
+    bool isMain(const T& node) const noexcept {
+      return node.template isFlagSet<RefFlags::kMMFlag2>();
     }
 
     // Bit MM_BIT_1 is used to record if the item has been accessed since
@@ -520,37 +426,23 @@ class MMLru {
     // protects all operations on the lru. We never really just read the state
     // of the LRU. Hence we dont really require a RW mutex at this point of
     // time.
-    mutable folly::cacheline_aligned<Mutex> lruMutex_, lruHeadMutex_;
+    mutable folly::cacheline_aligned<Mutex> lruMutex_;
 
-    const PtrCompressor compressor_{};
-
-    // the lru
-    LruList lru_{};
-
-    // insertion point
-    T* insertionPoint_{nullptr};
-
-    // size of tail after insertion point
-    size_t tailSize_{0};
+    // the fifo
+    FIFOList qdlist_{};
 
     // The next time to reconfigure the container.
     std::atomic<Time> nextReconfigureTime_{};
 
-    // How often to promote an item in the eviction queue.
-    std::atomic<uint32_t> lruRefreshTime_{};
-
     // Config for this lru.
-    // Write access to the MMLru Config is serialized.
+    // Write access to the MMS3FIFO Config is serialized.
     // Reads may be racy.
     Config config_{};
 
-    // Max lruFreshTime.
-    static constexpr uint32_t kLruRefreshTimeCap{900};
-
-    FRIEND_TEST(MMLruTest, Reconfigure);
+    FRIEND_TEST(MMS3FIFOTest, Reconfigure);
   };
 };
-} // namespace cachelib
-} // namespace facebook
+}  // namespace cachelib
+}  // namespace facebook
 
-#include "cachelib/allocator/MMLru-inl.h"
+#include "cachelib/allocator/MMS3FIFO-inl.h"

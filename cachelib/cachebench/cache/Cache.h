@@ -379,6 +379,8 @@ class Cache {
   // with a cache directory. TODO (sathya) merge this with shutDown()
   void cleanupSharedMem();
 
+  mutable util::PercentileStats cacheRequestLatency_;
+
  private:
   // checks for the consistency of the operation for the item
   //
@@ -505,6 +507,12 @@ inline typename TinyLFUAllocator::MMConfig makeMMConfig(
                                   config.tryLockUpdate,
                                   16,
                                   1);
+}
+
+template <>
+inline typename S3FIFOAllocator::MMConfig makeMMConfig(
+    CacheConfig const& config) {
+  return S3FIFOAllocator::MMConfig();
 }
 
 } // namespace cachebench

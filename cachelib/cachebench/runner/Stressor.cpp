@@ -204,6 +204,9 @@ std::unique_ptr<Stressor> Stressor::makeStressor(
     } else if (cacheConfig.allocator == "TinyLFU") {
       return std::make_unique<CacheStressor<TinyLFUAllocator>>(
           cacheConfig, stressorConfig, std::move(generator));
+    } else if (cacheConfig.allocator == "S3FIFO") {
+      return std::make_unique<CacheStressor<S3FIFOAllocator>>(
+          cacheConfig, stressorConfig, std::move(generator));
     }
   }
   throw std::invalid_argument("Invalid config");

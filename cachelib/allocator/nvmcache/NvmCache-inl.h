@@ -685,9 +685,9 @@ typename NvmCache<C>::WriteHandle NvmCache<C>::createItem(
     if (bf_) {
       bf_->set(bf_insert_id_, hasher_(key.toString()));
       bf_insert_cnt_ += 1;
-      if (bf_insert_cnt_ * 5 > bf_size_) {
+      if (bf_insert_cnt_ * 3 > bf_size_) {
         std::lock_guard<std::mutex> guard(bf_mutex_);
-        if (bf_insert_cnt_ * 5 > bf_size_) {
+        if (bf_insert_cnt_ * 3 > bf_size_) {
           bf_->clear(1-bf_insert_id_);
           bf_insert_id_ = 1-bf_insert_id_;
           bf_insert_cnt_ = 0;
