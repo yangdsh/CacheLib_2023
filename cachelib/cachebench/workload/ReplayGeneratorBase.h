@@ -135,7 +135,7 @@ class TraceFileStream {
     folly::split(',', header, keys_);
     if (keys_.size() == 1) {
       keys_.clear();
-      folly::split(',', "time,time_,key,size,type", keys_);
+      folly::split(',', "next,op_time,key,size,type", keys_);
     }
     for (size_t i = 0; i < keys_.size(); i++) {
       if (columnMap_.find(keys_[i]) == columnMap_.end()) {

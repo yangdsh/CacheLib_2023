@@ -1,22 +1,29 @@
 {
   "cache_config": {
     "allocator": "LRU",
-    "cacheSizeMB": 40960, 
+    "cacheSizeMB": 1024, 
     "useEvictionControl": true,
-    "MLConfig": "model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32",
+    "MLConfig": "use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,6,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,15,heuristic_aided,2,ml_mess_mode,0",
     "poolRebalanceIntervalSec" : 0,
-    "useCombinedLockForIterators": true,
-    "tryLockUpdate": false,
     "moveOnSlabRelease" : true,
     "rebalanceMinSlabs" : 2,
     "rebalanceStrategy": "hits",
-    "lruRefreshSec": 0,
-    "lruRefreshRatio": 0
+    "lruRefreshSec_": 0,
+    "lruRefreshRatio_": 0,
+    "nvmCachePaths": [
+      "/dev/nvme0n1p4"
+    ],
+    "nvmCacheSizeMB": 1024000,
+    "navyReaderThreads": 64,
+    "navyWriterThreads": 64,
+    "NavyBigHashSizePct": 0,
+    "NavyBlockSize": 4096,
+    "NavyParcelMemoryMB": 5760
   }, 
   "test_config":
   {
     "enableLookaside": true,
-    "opRatePerSec_": 25000000,
+    "opRatePerSec_": 2500000,
     "generator": "replay",
     "cachePieceSize": 4194304,
     "numOps": 6250000,
@@ -26,7 +33,7 @@
     "traceFileName": "/nfs/memc_200m.tr.ant",
     "replayGeneratorConfig":
     {
-        "ampFactor": 20
+        "ampFactor": 1
     }
   }
 }

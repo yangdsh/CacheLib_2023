@@ -27,11 +27,20 @@ cd "$dir/.." || die "failed to change-dir into $dir/.."
 test -d cachelib || die "failed to change-dir to expected root directory"
 
 
+# CMAKE_PARAMS="-DCMAKE_BUILD_TYPE=RelWithDebInfo -GNinja"
+CMAKE_PARAMS="-DCMAKE_BUILD_TYPE=Release -GNinja"
+# After ensuring we are in the correct directory, set the installation prefix"
+PREFIX="$PWD/opt/cachelib"
+CMAKE_PARAMS="$CMAKE_PARAMS -DCMAKE_INSTALL_PREFIX=$PREFIX"
+CMAKE_PREFIX_PATH="$PREFIX/lib/cmake:$PREFIX/lib64/cmake:$PREFIX/lib:$PREFIX/lib64:$PREFIX:${CMAKE_PREFIX_PATH:-}"
+export CMAKE_PREFIX_PATH
+
 mkdir -p "build-$NAME" || die "failed to create build-$NAME directory"
 cd "build-$NAME" || die "'cd' failed"
 
-cmake ../cachelib/ || die "cmake failed"
-make -j --keep-going || die "make failed"
+cmake $CMAKE_PARAMS ../cachelib/ || die "cmake failed"
+ninja
+#make -j --keep-going || die "make failed"
 #sudo make install || die "make install failed"
 
 #echo "$NAME library is now installed"

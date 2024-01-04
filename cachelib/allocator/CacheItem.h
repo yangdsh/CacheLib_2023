@@ -415,6 +415,10 @@ class CACHELIB_PACKED_ATTR CacheItem {
   // for Eviction controller
   uint32_t past_timestamp = 0;
   uint32_t access_in_windows = 0;
+#define TRUE_TTA
+#ifdef TRUE_TTA
+  mutable uint32_t next_timestamp = 0;
+#endif
   bool get_is_sampled() {
     return past_timestamp & 1;
   }
@@ -423,6 +427,12 @@ class CACHELIB_PACKED_ATTR CacheItem {
   }
   bool get_item_flag() const {
     return past_timestamp & 4;
+  }
+  bool get_item_flag2() const {
+    return past_timestamp & 8;
+  }
+  int get_past_timestamp() {
+    return past_timestamp - (past_timestamp&15);
   }
   void set_is_reinserted(bool val) {
     past_timestamp = past_timestamp - (past_timestamp&2);
@@ -433,11 +443,15 @@ class CACHELIB_PACKED_ATTR CacheItem {
     past_timestamp = past_timestamp | val;
   }
   void set_past_timestamp(uint32_t past_timestamp_) {
-    past_timestamp = past_timestamp_ - (past_timestamp_&7);
+    past_timestamp = past_timestamp_ - (past_timestamp_&15);
   }
   void set_item_flag(int val) {
     past_timestamp = past_timestamp - (past_timestamp&4);
     past_timestamp = past_timestamp | (val << 2);
+  }
+  void set_item_flag2(int val) {
+    past_timestamp = past_timestamp - (past_timestamp&8);
+    past_timestamp = past_timestamp | (val << 3);
   }
 
   using AccessContainer = typename CacheTrait::AccessType::template Container<

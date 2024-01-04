@@ -30,6 +30,10 @@
 #include <sys/syscall.h> 
 #include <sys/resource.h>
 
+#ifdef BFADM
+  #include "cachelib/common/BloomFilter.h"
+#endif
+
 #include "cachelib/cachebench/cache/Cache.h"
 #include "cachelib/cachebench/cache/TimeStampTicker.h"
 #include "cachelib/cachebench/runner/Stressor.h"
@@ -108,6 +112,9 @@ class CacheStressor : public Stressor {
     try {
       cache_ = std::make_unique<CacheT>(
           cacheConfig, movingSync, cacheConfig.cacheDir, config_.touchValue);
+#ifdef BFADM
+      bf_ = std::make_unique<BloomFilter>(2, 4, bf_size_);
+#endif
     } catch (const std::exception& e) {
       XLOG(INFO) << "Exception while creating cache: " << e.what();
       throw;
@@ -325,8 +332,9 @@ class CacheStressor : public Stressor {
         const auto pid = static_cast<PoolId>(opPoolDist(gen));
         const Request& req(getReq(pid, gen, lastRequestId));
         
-        if (*(req.sizeBegin) > 8 && !useEvictionController)
+        if (*(req.sizeBegin) > 8 && !useEvictionController) {
           *(req.sizeBegin) -= 8;
+        }
         if (cacheType == "TinyLFU") {
           *(req.sizeBegin) += 24;
         } 
@@ -366,7 +374,7 @@ class CacheStressor : public Stressor {
             }
           }
           auto lock = chainedItemAcquireUniqueLock(*key);
-          result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
+          result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
                           req.admFeatureMap, req.itemValue);
 
           break;
@@ -395,7 +403,7 @@ class CacheStressor : public Stressor {
               // appropriate here)
               slock = {};
               xlock = chainedItemAcquireUniqueLock(*key);
-              setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
+              setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
                      req.admFeatureMap, req.itemValue);
             }
           } //** else if (it->get_is_reinserted()) {
@@ -403,6 +411,9 @@ class CacheStressor : public Stressor {
             //** result = OpResultType::kGetMiss;
           //** }
           else {
+#ifdef TRUE_TTA
+            it->next_timestamp = req.nextTime;
+#endif
             result = OpResultType::kGetHit;
           }
           break;
@@ -508,6 +519,7 @@ class CacheStressor : public Stressor {
       const std::string* key,
       size_t size,
       uint32_t ttlSecs,
+      uint32_t nextTime,
       const std::unordered_map<std::string, std::string>& featureMap,
       const std::string& itemValue) {
     // check the admission policy first, and skip the set operation
@@ -515,6 +527,22 @@ class CacheStressor : public Stressor {
     if (config_.admPolicy && !config_.admPolicy->accept(featureMap)) {
       return OpResultType::kSetSkip;
     }
+#ifdef BFADM
+    if (!bf_->couldExist(0, hasher_(*key)) && !bf_->couldExist(1, hasher_(*key))) {
+      bf_->set(bf_insert_id_, hasher_(*key));
+      bf_insert_cnt_ += 1;
+      if (bf_insert_cnt_ * 4 > bf_size_) {
+        std::lock_guard<std::mutex> guard(bf_mutex_);
+        if (bf_insert_cnt_ * 4 > bf_size_) {
+          bf_->clear(1-bf_insert_id_);
+          bf_insert_id_ = 1-bf_insert_id_;
+          bf_insert_cnt_ = 0;
+          std::cout << "reset adm Bloom Filter" << std::endl;
+        }
+      }
+      return OpResultType::kSetSkip;
+    }
+#endif
 
     ++stats.set;
     auto it = cache_->allocate(pid, *key, size, ttlSecs);
@@ -522,16 +550,12 @@ class CacheStressor : public Stressor {
       ++stats.setFailure;
       return OpResultType::kSetFailure;
     }
-    // bug: find() causes extra hit/miss status update
-    else if (useNVM && false) {
-      populateItem(it, itemValue);
-      cache_->insertToNVM(it);
-    //  cache_->find(*key);
-      return OpResultType::kSetSuccess;
-    }
     else {
       populateItem(it, itemValue);
       cache_->insertOrReplace(it);
+#ifdef TRUE_TTA
+      it->next_timestamp = nextTime;
+#endif
       return OpResultType::kSetSuccess;
     }
   }
@@ -618,6 +642,15 @@ class CacheStressor : public Stressor {
   bool useNVM = 0;
   uint64_t avgSize = 0;
   uint64_t maxAllocSize = 1024*1024;
+
+#ifdef BFADM
+  std::unique_ptr<BloomFilter> bf_;
+  std::hash<std::string> hasher_;
+  uint32_t bf_insert_cnt_ = 0;
+  uint32_t bf_insert_id_ = 0;
+  uint32_t bf_size_ = 10000000;
+  std::mutex bf_mutex_;
+#endif
 
   // Ticker that syncs the time according to trace timestamp.
   std::shared_ptr<TimeStampTicker> ticker_;

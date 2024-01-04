@@ -1321,13 +1321,18 @@ class CacheAllocator : public CacheBase {
 
   // this ensures that we dont introduce any more hidden fields like vtable by
   // inheriting from the Hooks and their bool interface.
+#ifdef TRUE_TTA
+  static const int MLOverhead = sizeof(uint32_t) * 3;
+#else
+  static const int MLOverhead = sizeof(uint32_t) * 2;
+#endif
   static_assert((sizeof(typename MMType::template Hook<Item>) +
                  sizeof(typename AccessType::template Hook<Item>) +
                  sizeof(typename RefcountWithFlags::Value) + sizeof(uint32_t) +
                  sizeof(uint32_t) + sizeof(KAllocation) + 
-                 sizeof(uint32_t) * 2)  == sizeof(Item),
+                 MLOverhead)  == sizeof(Item),
                 "vtable overhead");
-    static_assert(40 == sizeof(Item), "item overhead is 32 bytes + 8 bytes Meta");
+  static_assert(32 + MLOverhead == sizeof(Item), "item overhead is 32 bytes + 8 bytes Meta");
 
   // make sure there is no overhead in ChainedItem on top of a regular Item
   static_assert(sizeof(Item) == sizeof(ChainedItem),
@@ -2116,6 +2121,8 @@ class CacheAllocator : public CacheBase {
   uint32_t n_eviction_queue = 0;
   uint32_t n_evict_out_cache = 0;
   uint32_t n_evict_empty = 0;
+  uint32_t from_head_cnt = 0;
+  uint32_t from_tail_cnt = 0;
   std::atomic<uint32_t> n_miss = 0;
   // a filter per pool per class to decide whether an eviction candidate should be reinserted
   std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
@@ -2124,8 +2131,9 @@ class CacheAllocator : public CacheBase {
   double bfRatio = 0;
   int meta_update_ssd = 0;
   int cacheParsedCnt = 0;
-  std::atomic<uint32_t> enqueue_token[100], tta_distribution[32], current_timestamp = 0;
-  #define TRUE_TTA
+  int firstEvict[32];
+  std::atomic<uint32_t> enqueue_token[100], tta_distribution[32];
+  std::atomic<int64_t> current_timestamp = 0;
   std::chrono::system_clock::time_point timePeriod;
 
   // Whether the memory allocator for this cache allocator was created on shared

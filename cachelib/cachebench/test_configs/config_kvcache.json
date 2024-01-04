@@ -1,23 +1,23 @@
 {
   "cache_config":
   {
-    "allocator": "S3FIFO",
-    "useEvictionControl": true,
-    "MLConfig": "model_type,0,batch_size_factor,1,training_sample_rate,1,window_size_factor,1,debug_mode,1,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0,meta_update_ssd,0,S3_mode,2",
+    "allocator": "LRU",
+    "useEvictionControl": false,
+    "MLConfig": "model_type,0,batch_size_factor,1,training_sample_rate,10,window_size_factor,0.1,debug_mode,2,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,async_mode,1,force_ml_mess_mode,0,ml_mess_mode,0",
     "cacheSizeMB" : 1024,
     "poolRebalanceIntervalSec" : 0,
     "htBucketPower" : 30,
     "htLockPower" : 30,
     "useCombinedLockForIterators": true,
     "tryLockUpdate": false,
-    "lruRefreshSec_": 0,
-    "lruRefreshRatio": 100,
+    "lruRefreshSec": 0,
+    "lruRefreshRatio": 0,
     "nvmCachePaths": [
       "/dev/nvme1n1"
     ],
     "nvmCacheSizeMB": 102400,
-    "navyReaderThreads": 64,
-    "navyWriterThreads": 64,
+    "navyReaderThreads": 512,
+    "navyWriterThreads": 512,
     "NavyBigHashSizePct": 0,
     "NavyBlockSize": 4096,
     "NavyParcelMemoryMB": 5760
@@ -33,8 +33,8 @@
     "repeatTraceReplay": false,
     "repeatOpCount" : false,
     "onlySetIfMiss" : false,
-    "numOps": 6000000, 
-    "numThreads": 32, 
+    "numOps": 1000000, 
+    "numThreads": 64, 
     "prepopulateCache": true, 
     "traceFileNames": [
       "/nfs/kvcache_traces_1.csv"

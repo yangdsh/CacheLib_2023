@@ -2,8 +2,8 @@
   "cache_config": {
     "allocator": "S3FIFO",
     "cacheSizeMB": 1024, 
-    "useEvictionControl": false,
-    "MLConfig": "use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,128,version,1130,meta_update_ssd,0,bfRatio,0.01",
+    "useEvictionControl": true,
+    "MLConfig": "use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,max_batch_size,10000,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,2,ml_mess_mode,0",
     "poolRebalanceIntervalSec" : 0,
     "moveOnSlabRelease" : true,
     "rebalanceMinSlabs" : 2,
@@ -23,11 +23,11 @@
   "test_config":
   {
     "enableLookaside": true,
-    "opRatePerSec_": 25000000,
+    "opRatePerSec_": 2500000,
     "generator": "replay",
     "cachePieceSize": 4194304,
-    "numOps": 6250000,
-    "numThreads": 16,
+    "numOps": 1250000,
+    "numThreads": 32,
     "populateItem": true,
     "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
     "traceFileName": "/nfs/memc_200m.tr.ant",

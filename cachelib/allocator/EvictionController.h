@@ -640,6 +640,10 @@ public:
 
     vector<double> predict() {
         auto scores = vector<double>(n_in_batch, 0);
+        if (!booster) {
+            XLOG_EVERY_MS(INFO, 1000) << "predict: model not trained";
+            return scores;
+        }
 
         int64_t len;
         std::string param_str;
@@ -735,7 +739,7 @@ class EvictionController {
                 force_run = stoi(it.second);
             }
             if (it.first == "batch_size_factor") {
-                batch_size_factor = stoi(it.second);
+                batch_size_factor = stof(it.second);
             }
             if (it.first == "window_size_factor") {
                 window_size_factor = stof(it.second);
@@ -775,6 +779,7 @@ class EvictionController {
             }
             if (it.first == "training_batch_size") {
                 training_batch_size = stoi(it.second);
+                max_batch_size = stoi(it.second);
             }
             if (it.first == "prediction_batch_size") {
                 prediction_batch_size = stoi(it.second);
@@ -783,11 +788,11 @@ class EvictionController {
                 max_reinsertions = stoi(it.second);
             }
             if (it.first == "rpe_target") {
-                rpe_target = stoi(it.second);
+                rpe_target = stof(it.second);
                 reinsertion_per_eviction = rpe_target;
             }
-            if (it.first == "rpe_change_rate") {
-                rpe_change_rate = stof(it.second);
+            if (it.first == "threshold_changing_rate") {
+                threshold_changing_rate = stof(it.second);
             }
             if (it.first == "use_adaptive_rpe") {
                 use_adaptive_rpe = stoi(it.second);
@@ -810,8 +815,11 @@ class EvictionController {
             if (it.first == "process_id") {
                 process_id = stoi(it.second);
             } 
-            if (it.first == "S3_mode") {
-                S3_mode = stoi(it.second);
+            if (it.first == "heuristic_mode") {
+                heuristic_mode = stoi(it.second);
+            }
+            if (it.first == "heuristic_aided") {
+                heuristic_aided = stoi(it.second);
             }
         }
         params["batch_size"] = to_string(prediction_batch_size);
@@ -833,6 +841,12 @@ class EvictionController {
         return isTrained;
     }
 
+    void info() {
+        XLOG(INFO) << "<cid=" << int(cid) << ' '
+            << "> ml reinserted/evicted: " << reinserted_cnt << ' ' << examined_cnt - reinserted_cnt
+            << ' ' << avg_repeat / (examined_cnt - reinserted_cnt);
+    }
+
     void prediction_worker() {
         //const pid_t tid = syscall(SYS_gettid); 
         //int ret = setpriority(PRIO_PROCESS, tid, 19);
@@ -852,7 +866,7 @@ class EvictionController {
             int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size);
             candidate_queue_size -= cnt;
             // std::cout << "weak up" << std::endl;
-            if (!trained() || evict_all_mode) {
+            if ((!trained() && !heuristic_aided) || evict_all_mode) {
                 evict_queue.enqueue_bulk(items_for_prediction, cnt);
                 evict_queue_size += cnt;
                 delete[] items_for_prediction;
@@ -863,7 +877,6 @@ class EvictionController {
             auto timeBegin = std::chrono::system_clock::now();
             std::shared_lock lock(model_mutex_);
             float avg_score = 0, avg_TTA = 0, avg_delta0 = 0, avg_freq = 0;
-            bool decisions[1024];
             // predict TTA in a batch
             for (int i = 0; i < cnt; i ++) {
                 Item* item = items_for_prediction[i];
@@ -871,17 +884,14 @@ class EvictionController {
                     std::cout << "node is null at prediction" << std::endl;
                     break;
                 }
-                int window_idx = item->past_timestamp / window_size;
+                int window_idx = item->get_past_timestamp() / window_size;
                 bitset<32> w(item->access_in_windows);
                 if (w[window_idx % feature_cnt] != 1) {
-                    ;
+                    XLOG_EVERY_MS(INFO, 1000) << "unexpected feature value";
                 }
-                if (item->get_item_flag() && S3_mode == 1) {
-                    w[window_idx % feature_cnt] = 1;
-                } else if (S3_mode == 1) {
-                    w[window_idx % feature_cnt] = 0;
+                if (heuristic_aided == 3) {
+                    w[window_idx % feature_cnt] = item->get_item_flag2();
                 }
-                decisions[i] = item->get_item_flag();
                 prediction_model->emplace_back(w.to_ulong(), window_idx);
             }
             build_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -895,7 +905,7 @@ class EvictionController {
             }
             for (int i = 0; i < scores.size(); i ++) {
                 double TTA = exp2(scores[i]);
-                double past_timestamp = items_for_prediction[i]->past_timestamp;
+                double past_timestamp = items_for_prediction[i]->get_past_timestamp();
                 //avg_score += TTA / scores.size();
                 // a hack to retrieve local time temporarily
                 int32_t item_logical_time = logical_time;
@@ -905,24 +915,41 @@ class EvictionController {
                     TTA = (item_logical_time - past_timestamp - TTA)
                         * TTA_diff_scaling;
 
-                bool to_reinsert;
-                if (S3_mode == 2 && decisions[i] == 0)
-                    to_reinsert = decisions[i];
-                else if (S3_mode == 3)
-                    to_reinsert = decisions[i];
-                else
-                    to_reinsert = ifReinsertItem(TTA);
-                
-                if (ml_mess_mode) {
-                    to_reinsert = !to_reinsert;
+                bool to_reinsert = 0;
+                if (heuristic_aided == 1) {
+                    to_reinsert = 1-items_for_prediction[i]->get_item_flag2();
                 }
+#ifdef TRUE_TTA
+                else if (heuristic_aided == 2) {
+                    TTA = items_for_prediction[i]->next_timestamp - current_timestamp_global;
+                    to_reinsert = ifReinsertItem(TTA);
+                }
+#endif
+                else if (ml_mess_mode) {
+                    to_reinsert = ml_mess_mode-1;
+                }
+                else {
+                    if (trained()) {
+                        to_reinsert = ifReinsertItem(TTA);
+                    } else {
+                        to_reinsert = 1-items_for_prediction[i]->get_item_flag2();
+                    }
+                }
+
                 if(!to_reinsert) {
-                    // if (items_for_prediction[i]->get_is_reinserted() && ram_meta_mode) {
-                        // generate negative training data
-                    //    _generateTrainingData(items_for_prediction[i], -1);
-                    //}
                     items_for_eviction[eviction_cnt++] = items_for_prediction[i];
+                    if (items_for_prediction[i]->get_is_sampled() == 1) // was not accessed again
+                        items_for_prediction[i]->set_item_flag2(1); // can be evicted
+                    examined_cnt ++;
+                    e_cnt ++;
+                    avg_repeat += repeat;
+                    repeat = 0;
                 } else {
+                    reinserted_cnt ++;
+                    examined_cnt ++;
+                    e_cnt ++;
+                    r_cnt ++;
+                    repeat ++;
                     items_for_prediction[i]->set_is_reinserted(1);// already reinserted
                 }
             }
@@ -933,33 +960,33 @@ class EvictionController {
             delete[] items_for_prediction;
             predict_time += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()
             - timeBegin).count();
-            if (debug_mode >= 4 && rand() % 10 == 0)
-                cout << "score: " << avg_score 
-                     << ", TTA: " << avg_TTA
-                     << ", delta0: " << avg_delta0
-                     << ", freq: " << avg_freq
-                     << ' ' << reinserted_cnt << ' ' << examined_cnt
-                     << ' ' << n_loose << ' ' << n_tight << ' ' << threshold
-                     << endl;
             prediction_model->clear();
         }
     }
 
     void adjust_threshold() {
-        if (float(reinserted_cnt) / (examined_cnt-reinserted_cnt) < reinsertion_per_eviction)
-            threshold *= (1 + threshold_changing_rate * 0.5);
-        else
-            threshold *= (1 - threshold_changing_rate * 0.5);
-    }
-    
-    void loosen_threshold() {
-        threshold *= (1 + threshold_changing_rate);
-        n_loose ++;
-    }
-
-    void tighten_threshold() {
-        threshold *= (1 - threshold_changing_rate);
-        n_tight ++;
+        if (cid == 1)
+            XLOG_EVERY_MS(INFO, 1000) << "<cid=" << int(cid) << ' ' << "> threshold: " << threshold
+        << ' ' << float(reinserted_cnt) / (examined_cnt-reinserted_cnt) << ' ' << r_cnt / (e_cnt - r_cnt);
+        if (r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction) {    
+            if (r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction * 0.9 && e_cnt > 1000) {
+                threshold *= (1 + reinsertion_per_eviction * 0.9 - r_cnt / (e_cnt-r_cnt));
+                r_cnt *= 0.5;
+                e_cnt *= 0.5;
+                //r_cnt = 1000 * r_cnt / e_cnt;
+                //e_cnt = 1000;
+            } else {
+                threshold *= (1 + threshold_changing_rate);
+            }
+        } else {
+            if (r_cnt / (e_cnt-r_cnt) > reinsertion_per_eviction + 1) {
+                threshold *= (1 - threshold_changing_rate);
+            } else {
+                threshold *= (1 - threshold_changing_rate);
+            }
+        }
+        r_cnt *= (1 - 1e-5);
+        e_cnt *= (1 - 1e-5);
     }
     
     bool ifReinsertItem(uint32_t predicted_tta) {
@@ -971,28 +998,13 @@ class EvictionController {
           repeat = 0;
           return false;
         }
-        examined_cnt ++;
-
-        if (!trained()) {
-            return false;
-        }
+        adjust_threshold();
         // decide whether to reinsert or evict and adjust the threshold
         if (predicted_tta < threshold) {
-            repeat ++;
-            reinserted_cnt ++;
-            if (repeat > reinsertion_per_eviction &&
-                (repeat + 1) % std::max(int(reinsertion_per_eviction), 1) == 0) {
-                tighten_threshold();
-            }
+            if (repeat % int(reinsertion_per_eviction+1) == 0)
+                adjust_threshold();
             return true;
         } else {
-            // sampled for training
-            // if (examined_cnt % reinsert_sample_rate == 0 && ram_meta_mode)
-            //     return true;
-            if (repeat < reinsertion_per_eviction)
-                loosen_threshold();
-            adjust_threshold();
-            repeat = 0;
             return false;
         }
     }
@@ -1003,6 +1015,7 @@ class EvictionController {
         uint32_t current_time;
         if (use_logical_clock) {
             current_time = logical_time++; //.fetch_add(1, std::memory_order_relaxed);
+            current_time = current_time - (current_time&15);
         } else {
             current_time = util::getCurrentTimeSec();
         }
@@ -1017,8 +1030,8 @@ class EvictionController {
             */
             bitset<32> w(item->access_in_windows);
             int window_idx = current_time / window_size;
-            if (item->past_timestamp != 0) {
-                int past_window_idx = item->past_timestamp / window_size;
+            if (item->get_past_timestamp() != 0) {
+                int past_window_idx = item->get_past_timestamp() / window_size;
                 if (window_idx - past_window_idx >= feature_cnt) {
                     w.reset();
                 } else {
@@ -1037,11 +1050,10 @@ class EvictionController {
             item->access_in_windows = 1;
         }
         item->set_past_timestamp(current_time);
-        // cout << "after record: " << current_time << ' ' << item->past_timestamp << endl;
     }
 
     void _generateTrainingData(Item* item, uint32_t current_time) {
-        if (item->get_is_sampled() > 0 && window_size > 0 && item->past_timestamp != 0 && !generate_in_progress) {
+        if (item->get_is_sampled() > 0 && window_size > 0 && item->get_past_timestamp() != 0 && !generate_in_progress) {
             generate_in_progress = 1;
             std::lock_guard<std::mutex> guard(training_data_mutex_);
             if (item->get_is_sampled() == 0) {
@@ -1049,7 +1061,7 @@ class EvictionController {
                 return;
             }
             item->set_is_sampled(0);
-            uint32_t sample_time = item->past_timestamp;
+            uint32_t sample_time = item->get_past_timestamp();
             uint32_t tta_label = current_time - sample_time;
 /*
             if (current_time == -1) {
@@ -1069,10 +1081,8 @@ class EvictionController {
             item->set_is_reinserted(0);
             bitset<32> w(item->access_in_windows);
             int window_idx = sample_time / window_size;
-            if (item->get_item_flag() && S3_mode == 1) {
-                w[window_idx % feature_cnt] = 1;
-            } else if (S3_mode == 1) {
-                w[window_idx % feature_cnt] = 0;
+            if (heuristic_aided == 3) {
+                w[window_idx % feature_cnt] = item->get_item_flag2();
             }
             training_model->emplace_back_training_sample(w.to_ulong(), window_idx, tta_label);
             training_batch_cnt += 1;
@@ -1130,7 +1140,7 @@ class EvictionController {
         if (1) {
             std::unique_lock lock(model_mutex_);
             prediction_model->delete_model();
-            // cout << cid << " is trained" << endl;
+            cout << cid << " is trained" << endl;
             prediction_model->set_model(temp_training_model->get_model());
         } else {
             cout << "training model has error!" << endl;
@@ -1155,14 +1165,14 @@ class EvictionController {
     int use_eviction_control = true;
     bool use_admission_threshold = true;
     bool use_oracle = false;
-    int max_reinsertions = 100;
-    int training_batch_size = 130000;
+    int max_reinsertions = 1000;
+    int training_batch_size = 131072;
+    int max_batch_size = 131072;
     int prediction_batch_size = 128;
     float reinsertion_per_eviction = 3;
     float rpe_target = 3;
-    float rpe_change_rate = 0.5;
     bool use_adaptive_rpe = false;
-    float threshold_changing_rate = 0.0001;
+    float threshold_changing_rate = 1e-4;
     float TTA_diff_scaling = 1;
     float freq_scaling = 2;
     int block_pred_in_nano = 0;
@@ -1170,13 +1180,14 @@ class EvictionController {
     int forget_num = 0;
     int sample_rate = 64;
     int prediction_size_threshold = 0;
-    int batch_size_factor = 10;
+    float batch_size_factor = 10;
     bool prediction_running = false;
     bool ml_mess_mode = 0;
     float bfRatio = 0;
     int meta_update_ssd = 0;
     bool force_run = 0;
-    int S3_mode = 0;
+    int heuristic_mode = 0;
+    int heuristic_aided = 0;
     int feature_cnt = 32;
     float window_size_factor = 10;
     int training_sample_rate = 5;
@@ -1199,21 +1210,25 @@ class EvictionController {
     mutable std::mutex training_data_mutex_;
     mutable std::shared_mutex model_mutex_;
     int training_batch_cnt = 0;
-    float threshold = 10000;
+    float threshold = 100000;
     float threshold_summary, tta_summary, delta_summary, freq_summary, summary_cnt;
     float candidate_ratio = 1;
     int num_in_cache = 0;
     uint32_t repeat = 0;
+    double avg_repeat = 0;
     int n_loose = 0, n_tight = 0;
     std::atomic<uint32_t> logical_time = 0;
     int cid;
     bool evict_all_mode = 0;
     bool is_mess_period = 0;
     int window_size = 0;
+    int64_t current_timestamp_global;
 
     // stat
     uint32_t examined_cnt = 0;
     uint32_t reinserted_cnt = 0;
+    float e_cnt = 0;
+    float r_cnt = 0;
     int tiny_win_cnt = 0;
     int main_win_cnt = 0;
     double train_data_time;

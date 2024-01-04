@@ -542,7 +542,7 @@ class MM2Q {
       return lru_.size();
     }
 
-    void setECMode() {
+    void setECMode(int mode) {
       return;
     }
 
@@ -560,7 +560,7 @@ class MM2Q {
 
     bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
-    void getCandidates(T** nodeList, int& length) noexcept {;}
+    void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {;}
 
     // Returns the eviction age stats. See CacheStats.h for details
     EvictionAgeStat getEvictionAgeStat(uint64_t projectedLength) const noexcept;

@@ -137,6 +137,8 @@ struct Request {
   // TTL in seconds.
   uint32_t ttlSecs{0};
 
+  uint32_t nextTime{0};
+
   const std::optional<uint64_t> requestId;
 
   // Feature map for this request sample, which is used for for admission

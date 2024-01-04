@@ -14,6 +14,7 @@ build-glog/
 build-googletest/
 build-sparsemap/
 build-wangle/
+build-*/
 
 # Required source-code dependencies, fetched by ./contrib/ scripts.
 cachelib/external/fmt/
@@ -21,3 +22,5 @@ cachelib/external/gflags/
 cachelib/external/glog/
 cachelib/external/googletest/
 cachelib/external/sparsemap/
+
+opt

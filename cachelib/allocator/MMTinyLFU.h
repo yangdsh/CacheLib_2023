@@ -508,7 +508,7 @@ class MMTinyLFU {
       return lru_.size();
     }
 
-    void setECMode() {
+    void setECMode(int mode) {
       return;
     }
 
@@ -522,7 +522,7 @@ class MMTinyLFU {
 
     bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
-    void getCandidates(T** nodeList, int& length) noexcept {;}
+    void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {;}
 
     // reconfigure the MMContainer: update refresh time according to current
     // tail age

@@ -84,17 +84,24 @@ class S3FIFOList {
     if (isProbationary(oldNode)) {
       markProbationary(newNode);
       pfifo_->replace(oldNode, newNode);
-    } else {
+    } else if (isMain(oldNode)) {
       markMain(newNode);
       mfifo_->replace(oldNode, newNode);
     }
   }
 
   void removeNode(T& node) noexcept {
-    if (isProbationary(node)) {
+    if (isMain(node)) {
+      mfifo_->remove(node);
+      mfifo_eviction_budget -= 1;
+    } else if (isProbationary(node)) {
       pfifo_->remove(node);
     } else {
-      mfifo_->remove(node);
+      XLOG_EVERY_MS(INFO, 1000) << "early evicted";
+    }
+    if (pfifo_->size() + mfifo_->size() > 80000) {
+      XLOG_EVERY_MS(INFO, 1000) << "<cid=1> " << pfifo_->size() << ' ' << mfifo_->size() <<
+        " s3 promote/evict  " << s3_reinsert_cnt << ':' << s3_evict_cnt << ' ' << mfifo_eviction_budget;
     }
   }
 
@@ -104,15 +111,22 @@ class S3FIFOList {
 
   size_t size() const noexcept { return pfifo_->size() + mfifo_->size(); }
 
-  void setECMode() {
-    ECMode = true;
+  void setECMode(int mode) {
+    EC_mode = mode;
+    candidate_from_pfifo_promote = mode & 1;
+    candidate_from_pfifo_evict = mode & 2;
+    candidate_from_mfifo_promote = mode & 4;
+    candidate_from_mfifo_evict = mode & 8;
+    XLOG_EVERY_MS(INFO, 1000) << "S3FIFO mode: " << candidate_from_pfifo_promote << ' ' << candidate_from_pfifo_evict
+      << ' ' << candidate_from_mfifo_promote << ' ' << candidate_from_mfifo_evict;
   }
   
-  void getCandidates(T** nodeList, int& length) noexcept {
-    uint32_t n_promoted = 0;
+  void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {
+    uint32_t n_promoted = 0, n_evict = 0;
     size_t listSize = pfifo_->size() + mfifo_->size();
     if (listSize == 0) {
       length = 0;
+      evictLength = 0;
       return;
     }
 
@@ -124,60 +138,83 @@ class S3FIFOList {
         hist_.initHashtable();
       }
     }
-
+    int _mfifo_eviction_budget = mfifo_eviction_budget;
     while (true) {
-      if (n_promoted == length)
-        return;
-      if (pfifo_->size() > (double)(pfifo_->size() + mfifo_->size()) * pRatio_) {
-        // evict from probationary FIFO
+      if (n_promoted + n_evict == length)
+        break;
+      bool evict_main = false;
+      bool tiny_too_large = pfifo_->size() > (double)(pfifo_->size() + mfifo_->size()) * pRatio_;
+      if (!mfifo_populated && !tiny_too_large) {
+        mfifo_populated = 1;
+        mfifo_eviction_budget = 0;
+        if (pfifo_->size() + mfifo_->size() > 80000)
+          XLOG(INFO) << pfifo_->size() << ' ' << mfifo_->size();
+      }
+      if (_mfifo_eviction_budget > 0 && mfifo_populated)
+        evict_main = true;
+
+      if (!evict_main) {
+        if (pfifo_->size() == 0) {
+          _mfifo_eviction_budget = 1;
+          continue;
+        }
         curr = pfifo_->removeTail();
+        curr->set_item_flag(0);
         if (pfifo_->isAccessed(*curr)) {
+          mfifo_eviction_budget ++;
+          _mfifo_eviction_budget ++;
           pfifo_->unmarkAccessed(*curr);
-          XDCHECK(isProbationary(*curr));
           unmarkProbationary(*curr);
           markMain(*curr);
           mfifo_->linkAtHead(*curr);
-          //nodeList[n_promoted] = curr;
-          //curr->set_item_flag(1);
-          //n_promoted ++;
+          if (candidate_from_pfifo_promote) {
+            nodeList[n_promoted++] = curr;
+          }
+          curr->set_item_flag2(0);
         } else {
+          mfifo_eviction_budget ++;
           hist_.insert(hashNode(*curr));
           unmarkProbationary(*curr);
           markMain(*curr);
           mfifo_->linkAtHead(*curr);
-          nodeList[n_promoted] = curr;
-          curr->set_item_flag(0);
-          n_promoted ++;
+          if (candidate_from_pfifo_evict) {
+            nodeList[n_promoted++] = curr;
+          } else {
+            evictList[n_evict++] = curr;
+          }
+          curr->set_item_flag2(1);
         }
       } else {
         curr = mfifo_->removeTail();
+        curr->set_item_flag(1);
         if (curr == nullptr) {
           break;
         }
         if (mfifo_->isAccessed(*curr)) {
           mfifo_->unmarkAccessed(*curr);
           mfifo_->linkAtHead(*curr);
-          nodeList[n_promoted] = curr;
-          curr->set_item_flag(1);
-          n_promoted ++;
+          if (candidate_from_mfifo_promote)
+            nodeList[n_promoted++] = curr;
+          s3_reinsert_cnt ++;
+          curr->set_item_flag2(0);
         } else {
+          _mfifo_eviction_budget --;
           mfifo_->linkAtHead(*curr);
-          nodeList[n_promoted] = curr;
-          curr->set_item_flag(1);
-          n_promoted ++;
+          if (candidate_from_mfifo_evict) {
+            nodeList[n_promoted++] = curr;
+          } else {
+            evictList[n_evict++] = curr;
+          }
+          s3_evict_cnt ++;
+          curr->set_item_flag2(1);
         }
       }
     }
     length = n_promoted;
+    evictLength = n_evict;
   }
 
   T* getEvictionCandidate() {
-    if (ECMode) {
-      if (mfifo_->size() > 0)
-        return mfifo_->getTail();
-      else
-        return pfifo_->getTail();
-    }
     size_t listSize = pfifo_->size() + mfifo_->size();
     if (listSize == 0) {
       return nullptr;
@@ -193,43 +230,58 @@ class S3FIFOList {
     }
 
     while (true) {
-      if (pfifo_->size() > (double)(pfifo_->size() + mfifo_->size()) * pRatio_) {
-        // evict from probationary FIFO
+      bool evict_main = false;
+      bool tiny_too_large = pfifo_->size() > (double)(pfifo_->size() + mfifo_->size()) * pRatio_;
+      if (!mfifo_populated && !tiny_too_large) {
+        mfifo_populated = 1;
+        mfifo_eviction_budget = 0;
+        if (pfifo_->size() + mfifo_->size() > 80000)
+          XLOG(INFO) << pfifo_->size() << ' ' << mfifo_->size();
+      }
+      if (mfifo_eviction_budget > 0 && mfifo_populated)
+        evict_main = true;
+
+      if (tiny_too_large && !evict_main) {
         curr = pfifo_->removeTail();
         if (curr == nullptr) {
-          if (pfifo_->size() != 0) {
-            printf("pfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
-            pfifo_->resetSize();
-          }
+          //printf("pfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
+          mfifo_eviction_budget = 1;
           continue;
         }
+        curr->set_item_flag(0);
         if (pfifo_->isAccessed(*curr)) {
+          mfifo_eviction_budget ++;
           pfifo_->unmarkAccessed(*curr);
           XDCHECK(isProbationary(*curr));
           unmarkProbationary(*curr);
           markMain(*curr);
           mfifo_->linkAtHead(*curr);
+          curr->set_item_flag2(0);
         } else {
+          mfifo_eviction_budget ++;
           hist_.insert(hashNode(*curr));
           unmarkProbationary(*curr);
           markMain(*curr);
           mfifo_->linkAtHead(*curr);
+          curr->set_item_flag2(1);
           return curr;
         }
       } else {
         curr = mfifo_->removeTail();
         if (curr == nullptr) {
-          if (mfifo_->size() != 0) {
-            printf("mfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
-            mfifo_->resetSize();
-          }
+          printf("mfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
           continue;
         }
+        curr->set_item_flag(1);
         if (mfifo_->isAccessed(*curr)) {
           mfifo_->unmarkAccessed(*curr);
           mfifo_->linkAtHead(*curr);
+          s3_reinsert_cnt ++;
+          curr->set_item_flag2(0);
         } else {
           mfifo_->linkAtHead(*curr);
+          s3_evict_cnt ++;
+          curr->set_item_flag2(1);
           return curr;
         }
       }
@@ -241,10 +293,16 @@ class S3FIFOList {
       mfifo_->linkAtHead(node);
       markMain(node);
       unmarkProbationary(node);
+      insert_to_mfifo += 1;
+      mfifo_eviction_budget ++;
+      node.set_item_flag(1);
     } else {
       pfifo_->linkAtHead(node);
       markProbationary(node);
       unmarkMain(node);
+      insert_to_pfifo += 1;
+      if (pfifo_->size() + mfifo_->size() > 80000)
+        XLOG_EVERY_MS(INFO, 1000) << "<cid=1> insert to p/m: " << insert_to_pfifo << ' ' << insert_to_mfifo;
     }
   }
 
@@ -289,7 +347,17 @@ class S3FIFOList {
 
   AtomicFIFOHashTable hist_;
 
-  bool ECMode = false;
+  int s3_evict_cnt = 0;
+  int s3_reinsert_cnt = 0;
+  int insert_to_pfifo = 0;
+  int insert_to_mfifo = 0;
+  int mfifo_eviction_budget = 0;
+  bool mfifo_populated = 0;
+  bool candidate_from_pfifo_promote = 0;
+  bool candidate_from_pfifo_evict = 0;
+  bool candidate_from_mfifo_promote = 0;
+  bool candidate_from_mfifo_evict = 0;
+  bool EC_mode = 0;
 };
 } // namespace cachelib
 } // namespace facebook

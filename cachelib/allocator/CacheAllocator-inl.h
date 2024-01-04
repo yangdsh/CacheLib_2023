@@ -252,9 +252,9 @@ void CacheAllocator<CacheTrait>::initWorkers() {
 template <typename CacheTrait>
 std::unique_ptr<MemoryAllocator> CacheAllocator<CacheTrait>::initAllocator(
     InitMemType type) {
-  if (config_.useEvictionControl) {
-    config_.size = config_.getCacheSize() * 0.99;
-  }
+  //if (config_.useEvictionControl) {
+  //  config_.size = config_.getCacheSize() * 0.99;
+  //}
   if (type == InitMemType::kNone) {
     if (isOnShm_ == true) {
       return std::make_unique<MemoryAllocator>(getAllocatorConfig(config_),
@@ -1323,25 +1323,28 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
       ++searchTries;
       (*stats_.evictionAttempts)[pid][cid].inc();
 
-      auto* toRecycle_ = itr.get();
+      Item* toRecycle_ = nullptr;
       if (config_.useEvictionControl) {
         auto mm_size = mmContainer.sizeLocked();
         itr.destroy(); // release lock
         EvictionController<CacheTrait>* ec;
         ec = evictionControllers_[pid][cid];
+        ec->current_timestamp_global = current_timestamp;
 
         if (ec->use_eviction_control > 0) {
           // get item to evict from the eviction queue
-          Item* evict_pointer;
+          Item* evict_pointer = nullptr;
           if (ec->evict_queue.try_dequeue(evict_pointer)) {
-            n_eviction_queue ++;
+            if (cid == 1)
+              n_eviction_queue ++;
             ec->evict_queue_size -= 1;
-            if (evict_pointer != nullptr) {
+            if (evict_pointer != nullptr && evict_pointer->get_item_flag2() == 1) {
               toRecycle_ = evict_pointer;
               // cout << toRecycle->getKey() << ' ' << toRecycle->getSize() << endl;
             }
           } else {
-            n_evict_empty ++;
+            if (cid == 1)
+              n_evict_empty ++;
           }
         }
 
@@ -1350,10 +1353,14 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           if (mm_size < 1024) {
             ec->use_eviction_control = false;
           } else {
-            mmContainers_[pid][cid]->setECMode();
+            mmContainers_[pid][cid]->setECMode(ec->heuristic_mode);
             ec->training_batch_size = mm_size * ec->batch_size_factor;
-            if (ec->training_batch_size > 130000)
-              ec->training_batch_size = 130000;
+            ec->threshold = ec->logical_time;
+            if (ec->training_batch_size > ec->max_batch_size)
+              ec->training_batch_size = ec->max_batch_size;
+            else {
+              ec->training_batch_size *= sqrt(ec->max_batch_size / ec->training_batch_size);
+            }
             ec->params["batch_size"] = to_string(ec->training_batch_size);
             std::cout << int(cid) << ' ' << ec->training_batch_size << std::endl;
           }
@@ -1367,12 +1374,14 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
 
           //  ----------------------- async mode ----------------------------
           // insert candidates into the queue
-          if (!ec->prediction_running && ec->candidate_queue_size < enqueue_batch_size
-              && ec->evict_queue_size < enqueue_batch_size) {
+          if (//!mmContainer.isLRU() || 
+              (!ec->prediction_running && ec->candidate_queue_size < enqueue_batch_size
+              && ec->evict_queue_size < enqueue_batch_size)) {
             // auto timeBegin_d = std::chrono::system_clock::now();
             // std::cout << "try enqueue at class " << int(cid) << std::endl;
             int i = 0;
-            Item** items_for_prediction = new Item*[enqueue_batch_size];
+            Item** items_for_prediction = new Item*[32768];
+            Item** items_for_eviction = new Item*[enqueue_batch_size];
             itr.resetToBegin();
             if (mmContainer.isLRU()) {
               Item* nodeTail = itr.get();
@@ -1382,10 +1391,16 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
                 items_for_prediction[i] = node;
               }
               mmContainer.moveBatchToHeadLocked(*node, *nodeTail, i);
+              itr.destroy();
             } else {
-              mmContainer.getCandidates(items_for_prediction, enqueue_batch_size);
+              int evict_batch_size = 0;
+              mmContainer.getCandidates(items_for_prediction, items_for_eviction, enqueue_batch_size,
+                evict_batch_size);
+              itr.destroy();
+              ec->evict_queue.enqueue_bulk(items_for_eviction, evict_batch_size);
+              ec->evict_queue_size += evict_batch_size;
+              delete[] items_for_eviction;
             }
-            itr.destroy();
             for (int i = 0; i < enqueue_batch_size; i += ec->training_sample_rate) {
               items_for_prediction[i]->set_is_sampled(1);
               n_reinsertion_queue ++;
@@ -1407,6 +1422,10 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
         if (!itr) {
           itr.resetToBegin();
         }
+      }
+      if (toRecycle_ == nullptr) {
+        XLOG_EVERY_MS(INFO, 1000) << "<cid=1> heur/queue:" << n_evict_empty << ' ' << n_eviction_queue;
+        toRecycle_ = itr.get();
       }
       auto* candidate_ =
           toRecycle_->isChainedItem()
@@ -1459,9 +1478,18 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
   if (!toRecycle) {
     return {candidate, toRecycle};
   }
+  if (cid == 1) {
+    if (candidate->get_item_flag() == 0)
+      from_head_cnt ++;
+    else
+      from_tail_cnt ++;
+    XLOG_EVERY_MS(INFO, 1000) << "<cid=1> head,tail " << from_head_cnt << ' ' << from_tail_cnt;
+  }
 #ifdef TRUE_TTA
-  uint32_t tta = candidate->getCreationTime() - current_timestamp;
-  tta_distribution[31-__builtin_clz(tta)] ++;
+  int64_t tta = (int64_t)candidate->next_timestamp - current_timestamp;
+  if (tta < 0) tta = 0;
+  //if (candidate->get_item_flag() == 0)
+    tta_distribution[31-__builtin_clz((uint32_t)tta)] ++;
 #endif
 
   XDCHECK(toRecycle);
@@ -1916,12 +1944,17 @@ void CacheAllocator<CacheTrait>::render() {
   timePeriod = std::chrono::system_clock::now();
 #ifdef TRUE_TTA
   cacheParsedCnt = current_timestamp;
-  for (int i = 0 ; i < 32; i ++)
+  for (int i = 0 ; i < 32; i ++) {
     std::cout << tta_distribution[i] << ' ';
+    tta_distribution[i] = 0;
+  }
   std::cout << endl;
 #endif
   std::cout << "parsed requests: " << cacheParsedCnt << '\n';
   std::cout << "interval: " << interval << '\n';
+  if (debug_mode < 1) {
+    return;
+  }
 
   /*
   std::cout << "all requests: " << cacheReqCnt << '\n';
@@ -2023,8 +2056,16 @@ template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::findImpl(typename Item::Key key, AccessMode mode) {
 #ifdef TRUE_TTA
-  if (debug_mode >= 1 && ++current_timestamp % 10000000 == 0)
+  if (++current_timestamp % 10000000 == 0) {
     render();
+    PoolId pid=0;
+    const auto& pool = allocator_->getPool(pid);
+    const auto& allocSizes = pool.getAllocSizes();
+    for (ClassId cid = 0; cid < static_cast<ClassId>(allocSizes.size()); ++cid) {
+      EvictionController<CacheTrait>* ec = evictionControllers_[0][cid];
+      ec->info();
+    }
+  }
 #else
   if (debug_mode >= 1 && ++cacheParsedCnt % 10000000 == 0)
     render();

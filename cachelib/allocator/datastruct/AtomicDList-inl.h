@@ -32,7 +32,7 @@ void AtomicDList<T, HookPtr>::sanityCheck(std::string tag) {
 
     if (curr_size != size_) {
       printf("%s, curr_size: %zu, size: %zu\n", tag.c_str(), curr_size, size_);
-      // abort();
+      abort();
     }
     // printf("curr_size: %zu\n", curr_size);
   }
@@ -92,6 +92,8 @@ void AtomicDList<T, HookPtr>::linkAtTail(T& node) noexcept {
 /* note that the next of the tail may not be nullptr  */
 template <typename T, AtomicDListHook<T> T::*HookPtr>
 T* AtomicDList<T, HookPtr>::removeTail() noexcept {
+  if (tail_ == nullptr)
+    return tail_;
   T* tail = tail_;
   remove(*tail);
   sanityCheck("removeTail");
@@ -110,6 +112,7 @@ void AtomicDList<T, HookPtr>::removeBatchTail(T& nodeHead, T& nodeTail, int leng
 template <typename T, AtomicDListHook<T> T::*HookPtr>
 void AtomicDList<T, HookPtr>::unlink(const T& node) noexcept {
   XDCHECK_GT(size_, 0u);
+  sanityCheck("unlink0");
   auto* const prev = getPrev(node);
   auto* const next = getNext(node);
 

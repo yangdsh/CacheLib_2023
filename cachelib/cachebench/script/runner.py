@@ -29,7 +29,7 @@ elif env == "cloudlab2":
     temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/build-cachelib/cachebench"
 
 ts = int(time.time())
-debug_nfs = 2
+debug_nfs = 0
 upload_mode = False
 should_upload = True
 sharding_mode = False

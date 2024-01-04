@@ -290,6 +290,8 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   // Set TTL (optional)
   auto ttlField = traceStream_.template getField<size_t>(SampleFields::TTL);
   req->req_.ttlSecs = ttlField.value_or(0);
+  auto nextTimeField = traceStream_.template getField<size_t>(SampleFields::NEXT);
+  req->req_.nextTime = nextTimeField.value_or(0);
 
   return true;
 }

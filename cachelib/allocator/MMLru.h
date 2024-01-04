@@ -422,7 +422,7 @@ class MMLru {
       return lru_.size();
     }
 
-    void setECMode() {
+    void setECMode(int mode) {
       return;
     }
 
@@ -440,7 +440,7 @@ class MMLru {
 
     bool moveBatchToHeadLocked(T& nodeHead, T& nodeTail, int length) noexcept;
 
-    void getCandidates(T** nodeList, int& length) noexcept {;}
+    void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {;}
 
     // remove node from lru and adjust insertion points
     // @param node          node to remove

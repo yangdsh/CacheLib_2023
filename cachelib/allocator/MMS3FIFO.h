@@ -202,12 +202,17 @@ class MMS3FIFO {
       }
       LockedIterator& operator--() { throw std::logic_error("Not implemented"); }
 
-      T* operator->() const noexcept { return candidate_; }
-      T& operator*() const noexcept { return *candidate_; }
+      T* operator->() noexcept { return get(); }
+      T& operator*() noexcept { return *get(); }
 
-      explicit operator bool() const noexcept { return candidate_ != nullptr; }
+      explicit operator bool() const noexcept { return l_.owns_lock(); }
 
-      T* get() const noexcept { return candidate_; }
+      T* get() noexcept {
+        if (candidate_ == nullptr) {
+          candidate_ = qdlist_->getEvictionCandidate();
+        }
+        return candidate_; 
+      }
 
       // Invalidates this iterator
       void reset() noexcept {
@@ -240,12 +245,11 @@ class MMS3FIFO {
       LockedIterator(LockHolder l, FIFOList* qdlist) {
         l_ = std::move(l);
         qdlist_ = qdlist;
-        candidate_ = qdlist_->getEvictionCandidate();
       }
 
       FIFOList* qdlist_;
 
-      T* candidate_;
+      T* candidate_ = nullptr;
       
       LockHolder l_;
 
@@ -334,8 +338,8 @@ class MMS3FIFO {
       return qdlist_.size();
     }
 
-    void setECMode() {
-      qdlist_.setECMode();
+    void setECMode(int mode) {
+      qdlist_.setECMode(mode);
       return;
     }
 
@@ -347,7 +351,7 @@ class MMS3FIFO {
 
     static void markReinserted(T& node) noexcept {return;}
 
-    void moveToHeadLocked(T& node) noexcept {return;}
+    void moveToHeadLocked(T& node) noexcept {qdlist_.moveToHead(node);}
 
     size_t counterSize() {return 0;}
 
@@ -355,8 +359,8 @@ class MMS3FIFO {
       return true;
     }
 
-    void getCandidates(T** nodeList, int& length) noexcept {
-      qdlist_.getCandidates(nodeList, length);
+    void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {
+      qdlist_.getCandidates(nodeList, evictList, length, evictLength);
     }
 
     // Returns the eviction age stats. See CacheStats.h for details
