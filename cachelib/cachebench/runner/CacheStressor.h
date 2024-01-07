@@ -242,7 +242,7 @@ class CacheStressor : public Stressor {
       for (uint64_t i = 0; i < config_.numThreads; ++i) {
         workers.push_back(
             std::thread([this, throughputStats = &throughputStats_.at(i),
-                         threadName = folly::sformat("cb_stressor_{}", i)]() {
+                         threadName = folly::sformat("cb_stressor_{}", i), i]() {
               folly::setThreadName(threadName);
               server_thread(i);
             }));
@@ -396,7 +396,7 @@ class CacheStressor : public Stressor {
       
       //filter size larger than 4mb
       if (*(req.sizeBegin) >= maxAllocSize) {
-        lastRequestId = req.requestId;
+        // lastRequestId = req.requestId;
         if (req.requestId) {
           // req might be deleted after calling notifyResult()
           resp->result = OpResultType::kGetMiss;
@@ -546,7 +546,7 @@ class CacheStressor : public Stressor {
         break;
       }
     } catch (const cachebench::EndOfTrace& ex) {
-      break;
+      std::terminate();
     }
   }
 
