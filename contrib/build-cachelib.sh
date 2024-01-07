@@ -13,6 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Create huge pages.
+sudo bash -c "echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages"
+sudo mkdir -p /mnt/huge
+sudo mount -t hugetlbfs nodev /mnt/huge
+
+# Pull down the eRPC library.
+if [ ! -d "cachelib/cachebench/eRPC" ] ; then
+    git clone https://github.com/oleggolev/eRPC "cachelib/cachebench/"
+fi
+
 NAME=cachelib
 
 die()

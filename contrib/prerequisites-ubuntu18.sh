@@ -48,6 +48,22 @@ sudo apt-get install -y \
   libmlpack-dev \
   libeigen3-dev
 
+# Prepare eRPC dependencies.
+sudo apt-get install -y \
+  libibverbs-dev \
+  libibverbs1 \
+  rdma-core \
+  ibverbs-utils \
+  libgtest-dev \
+  libboost-dev \
+  libboost-filesystem-dev \
+  libboost-thread-dev \
+  libboost-program-options-dev \
+  libboost-python-dev
+cd /usr/src/googletest
+sudo cmake .
+sudo cmake --build . --target install
+
 # NOTE:
 # GoogleTest/GoogleMock libraries are available in Ubuntu as
 # Standard packages, but the do not contain the required CMAKE
