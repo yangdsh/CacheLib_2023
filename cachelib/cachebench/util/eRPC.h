@@ -8,6 +8,10 @@
 #include "cachelib/cachebench/util/Request.h"
 #include "rpc.h"
 
+namespace facebook {
+namespace cachelib {
+namespace cachebench {
+
 static const std::string kServerHostname = "128.110.219.167";
 static const std::string kClientHostname = "128.110.219.156";
 
@@ -39,3 +43,7 @@ class ServerThreadContext {
 
   ~ServerThreadContext() {}
 };
+
+} // namespace cachebench
+} // namespace cachelib
+} // namespace facebook
