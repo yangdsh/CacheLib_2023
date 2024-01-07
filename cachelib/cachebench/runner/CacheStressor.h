@@ -20,6 +20,7 @@
 #include <folly/TokenBucket.h>
 #include <folly/system/ThreadName.h>
 
+#include <signal.h>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -27,8 +28,6 @@
 #include <memory>
 #include <thread>
 #include <unordered_set>
-#include <sys/syscall.h> 
-#include <sys/resource.h>
 
 #ifdef BFADM
   #include "cachelib/common/BloomFilter.h"
@@ -42,13 +41,16 @@
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
 #include "cachelib/cachebench/workload/GeneratorBase.h"
-#include "rpc.h"
+#include "cachelib/cachebench/util/eRPC.h"
 
 namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
 constexpr uint32_t kNvmCacheWarmUpCheckRate = 1000;
+
+volatile sig_atomic_t ctrl_c_pressed = 0;
+void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
 
 // Implementation of stressor that uses a workload generator to stress an
 // instance of the cache.  All item's value in CacheStressor follows CacheValue
@@ -139,6 +141,76 @@ class CacheStressor : public Stressor {
   }
 
   ~CacheStressor() override { finish(); }
+
+  void req_handler(erpc::ReqHandle* req_handle, void* _context) {
+    auto* c = static_cast<ServerThreadContext*>(_context);
+
+    // Check Cache health status.
+    if (cache_->getInconsistencyCount() >= config_.maxInconsistencyCount ||
+        cache_->getInvalidDestructorCount() >= config_.maxInvalidDestructorCount ||
+        cache_->isNvmCacheDisabled() || shouldTestStop())
+    {
+        std::terminate();
+    }
+
+    // Get request buffer.
+    const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
+    assert(req_msgbuf->get_data_size() == sizeof(req_t));
+    req_t request;
+    memcpy(&request, req_msgbuf->buf_, sizeof(req_t));
+
+    // Process request as per stressByDiscreteDistribution.
+
+    // Use dynamic response based on the size of the data from Cache.
+    erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
+    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(request.resp_size);
+
+    // TODO: Write a sequence to buffer.
+    // memcpy(resp_msgbuf.buf_, <SOMETHING FROM CACHE>, request.resp_size);
+    c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
+  }
+
+  void server_thread(size_t thread_id) {
+    ServerThreadContext c;
+    c.thread_id_ = thread_id;
+    
+    // Throttle function.
+    const uint64_t opDelayBatch = config_.opDelayBatch;
+    const uint64_t opDelayNs = config_.opDelayNs;
+    const std::chrono::nanoseconds opDelay(opDelayNs);
+
+    const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
+    uint64_t opCounter = 0;
+    auto throttleFn = [&] {
+      if (needDelay && ++opCounter == opDelayBatch) {
+        opCounter = 0;
+        std::this_thread::sleep_for(opDelay);
+      }
+      // Limit the rate if specified.
+      limitRate();
+    };
+    c.throttleFn = throttleFn;
+    
+    // Throughput stats from object.
+    c.stats = throughputStats_.at(thread_id);
+
+    // Start eRPC server on a unique port.
+    size_t port = kServerBasePort + thread_id;
+    std::string server_uri = kServerHostname + ":" + std::to_string(port);
+    erpc::Nexus nexus(server_uri, 0, kNumBgThreads);
+    nexus.register_req_func(kReqType, req_handler);
+    erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
+                                    static_cast<uint8_t>(thread_id), nullptr,
+                                    kPhyPort);
+    c.rpc_ = &rpc;
+
+    printf("Server starting on port %zu...\n", port);
+    while (true) {
+      rpc.run_event_loop(kAppEvLoopMs);
+      if (ctrl_c_pressed == 1)
+        break;
+    }
+  }
 
   // Start the stress test by spawning the worker threads and waiting for them
   // to finish the stress operations.
@@ -281,32 +353,6 @@ class CacheStressor : public Stressor {
   //
   // @param stats       Throughput stats
   void stressByDiscreteDistribution(ThroughputStats& stats) {
-    std::mt19937_64 gen(folly::Random::rand64());
-    std::discrete_distribution<> opPoolDist(config_.opPoolDistribution.begin(),
-                                            config_.opPoolDistribution.end());
-    const uint64_t opDelayBatch = config_.opDelayBatch;
-    const uint64_t opDelayNs = config_.opDelayNs;
-    const std::chrono::nanoseconds opDelay(opDelayNs);
-
-    const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
-    uint64_t opCounter = 0;
-    auto throttleFn = [&] {
-      if (needDelay && ++opCounter == opDelayBatch) {
-        opCounter = 0;
-        std::this_thread::sleep_for(opDelay);
-      }
-      // Limit the rate if specified.
-      limitRate();
-    };
-
-    std::optional<uint64_t> lastRequestId = std::nullopt;
-    for (uint64_t i = 0;
-         i < config_.numOps &&
-         cache_->getInconsistencyCount() < config_.maxInconsistencyCount &&
-         cache_->getInvalidDestructorCount() <
-             config_.maxInvalidDestructorCount &&
-         !cache_->isNvmCacheDisabled() && !shouldTestStop();
-         ++i) {
       try {
         // at the end of every operation, throttle per the config.
         SCOPE_EXIT { throttleFn(); };
@@ -322,7 +368,7 @@ class CacheStressor : public Stressor {
 #endif
         ++stats.ops;
 
-        const auto pid = static_cast<PoolId>(opPoolDist(gen));
+        const auto pid = static_cast<PoolId>(opPoolDist(gen)); // we do not care
         const Request& req(getReq(pid, gen, lastRequestId));
         
         if (*(req.sizeBegin) > 8 && !useEvictionController) {
@@ -495,7 +541,6 @@ class CacheStressor : public Stressor {
       } catch (const cachebench::EndOfTrace& ex) {
         break;
       }
-    }
   }
 
   // inserts key into the cache if the admission policy also indicates the
@@ -573,7 +618,7 @@ class CacheStressor : public Stressor {
     while (true) {
       // const Request& req(wg_->getReq(pid, gen, lastRequestId));
       std::vector<size_t> reqVec(5);
-      const Request& req("hello", reqVec.begin(), reqVec.end());
+      const Request req("hello", reqVec.begin(), reqVec.end());
       if (config_.checkConsistency && cache_->isInvalidKey(req.key)) {
         continue;
       }
