@@ -37,8 +37,8 @@ class ServerThreadContext {
  public:
   size_t thread_id_;
   erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
-  std::function<void()>& throttleFn;
-  ThroughputStats& stats;
+  std::function<void()> throttleFn;
+  ThroughputStats stats;
   PoolId pid;
 
   ~ServerThreadContext() {}
