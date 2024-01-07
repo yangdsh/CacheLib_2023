@@ -65,11 +65,9 @@ class CacheStressor : public Stressor {
   // @param config        stress test config
   // @param generator     workload  generator
   CacheStressor(CacheConfig cacheConfig,
-                StressorConfig config,
-                std::unique_ptr<GeneratorBase>&& generator)
+                StressorConfig config)
       : config_(std::move(config)),
         throughputStats_(config_.numThreads),
-        wg_(std::move(generator)),
         hardcodedString_(genHardcodedString()),
         endTime_{std::chrono::system_clock::time_point::max()} {
     maxAllocSize = cacheConfig.maxAllocSize;
@@ -102,10 +100,7 @@ class CacheStressor : public Stressor {
       // TimeStampTicker allows syncing the notion of time between the
       // cache and the workload generator based on timestamps in the trace.
       ticker_ = std::make_shared<TimeStampTicker>(
-          config.numThreads, cacheConfig.tickerSynchingSeconds,
-          [wg = wg_.get()](double elapsedSecs) {
-            wg->renderWindowStats(elapsedSecs, std::cout);
-          });
+          config.numThreads, cacheConfig.tickerSynchingSeconds, nullptr);
       cacheConfig.ticker = ticker_;
     }
     cacheConfig.nvmWriteBytesCallback =
@@ -134,9 +129,6 @@ class CacheStressor : public Stressor {
           config_.keyPoolDistribution.size(), cache_->numPools()));
     }
 
-    if (config_.checkConsistency) {
-      cache_->enableConsistencyCheck(wg_->getAllKeys());
-    }
     if (config_.opRatePerSec > 0) {
       // opRateBurstSize is default to opRatePerSec if not specified
       rateLimiter_ = std::make_unique<folly::BasicTokenBucket<>>(
@@ -196,14 +188,12 @@ class CacheStressor : public Stressor {
     if (stressWorker_.joinable()) {
       stressWorker_.join();
     }
-    wg_->markShutdown();
     cache_->clearCache(config_.maxInvalidDestructorCount);
   }
 
   // abort the stress run by indicating to the workload generator and
   // delegating to the base class abort() to stop the test.
   void abort() override {
-    wg_->markShutdown();
     Stressor::abort();
   }
 
@@ -222,12 +212,14 @@ class CacheStressor : public Stressor {
 
   void renderWorkloadGeneratorStats(uint64_t elapsedTimeNs,
                                     std::ostream& out) const override {
-    wg_->renderStats(elapsedTimeNs, out);
+    // This should be done by the generator client itself.
+    // wg_->renderStats(elapsedTimeNs, out);
   }
 
   void renderWorkloadGeneratorStats(
       uint64_t elapsedTimeNs, folly::UserCounters& counters) const override {
-    wg_->renderStats(elapsedTimeNs, counters);
+    // This should be done by the generator client itself.
+    // wg_->renderStats(elapsedTimeNs, counters);
   }
 
   uint64_t getTestDurationNs() const override {
@@ -348,7 +340,8 @@ class CacheStressor : public Stressor {
           lastRequestId = req.requestId;
           if (req.requestId) {
             // req might be deleted after calling notifyResult()
-            wg_->notifyResult(*req.requestId, OpResultType::kGetMiss);
+            // TODO: respond back to client with result via eRPC
+            // wg_->notifyResult(*req.requestId, OpResultType::kGetMiss);
           }
           continue;
         }
@@ -496,13 +489,13 @@ class CacheStressor : public Stressor {
         lastRequestId = req.requestId;
         if (req.requestId) {
           // req might be deleted after calling notifyResult()
-          wg_->notifyResult(*req.requestId, result);
+          // TODO: respond back to client with result via eRPC
+          // wg_->notifyResult(*req.requestId, result);
         }
       } catch (const cachebench::EndOfTrace& ex) {
         break;
       }
     }
-    wg_->markFinish();
   }
 
   // inserts key into the cache if the admission policy also indicates the
@@ -573,11 +566,14 @@ class CacheStressor : public Stressor {
   //                        generator. This is used to provide continuity by
   //                        some generator implementations.
 
+  // TODO: This entire function should be on server-side when processing each request.
   const Request& getReq(const PoolId& pid,
                         std::mt19937_64& gen,
                         std::optional<uint64_t>& lastRequestId) {
     while (true) {
-      const Request& req(wg_->getReq(pid, gen, lastRequestId));
+      // const Request& req(wg_->getReq(pid, gen, lastRequestId));
+      std::vector<size_t> reqVec(5);
+      const Request& req("hello", reqVec.begin(), reqvec.end());
       if (config_.checkConsistency && cache_->isInvalidKey(req.key)) {
         continue;
       }
@@ -607,7 +603,7 @@ class CacheStressor : public Stressor {
       return;
     }
     if (cache_->hasNvmCacheWarmedUp()) {
-      wg_->setNvmCacheWarmedUp(requestTimestamp);
+      //wg_->setNvmCacheWarmedUp(requestTimestamp); // this is a do nothing for KVReplayGenerator
       XLOG(INFO) << "NVM cache has been warmed up";
       hasNvmCacheWarmedUp_ = true;
     }
@@ -618,8 +614,6 @@ class CacheStressor : public Stressor {
   std::string cacheType;
 
   std::vector<ThroughputStats> throughputStats_; // thread local stats
-
-  std::unique_ptr<GeneratorBase> wg_; // workload generator
 
   // locks when using chained item and moving.
   std::array<folly::SharedMutex, 1024> locks_;
