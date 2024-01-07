@@ -210,7 +210,7 @@ class CacheStressor : public Stressor {
     size_t port = kServerBasePort + thread_id;
     std::string server_uri = kServerHostname + ":" + std::to_string(port);
     erpc::Nexus nexus(server_uri, 0, kNumBgThreads);
-    nexus.register_req_func(kReqType, this.req_handler);
+    nexus.register_req_func(kReqType, this->req_handler);
     erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
                                     static_cast<uint8_t>(thread_id), nullptr,
                                     kPhyPort);
@@ -245,7 +245,7 @@ class CacheStressor : public Stressor {
               folly::setThreadName(threadName);
               server_thread(i);
             }));
-        erpc::bind_to_core(workers[i], 0, i);
+        // erpc::bind_to_core(workers[i], 0, i);
       }
       for (auto& worker : workers) {
         worker.join();
