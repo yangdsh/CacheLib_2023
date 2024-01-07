@@ -66,8 +66,7 @@ class CacheStressor : public Stressor {
   // @param cacheConfig   the config to instantiate the cache instance
   // @param config        stress test config
   // @param generator     workload  generator
-  CacheStressor(CacheConfig cacheConfig,
-                StressorConfig config)
+  CacheStressor(CacheConfig cacheConfig, StressorConfig config, std::unique_ptr<GeneratorBase>&&)
       : config_(std::move(config)),
         throughputStats_(config_.numThreads),
         hardcodedString_(genHardcodedString()),
