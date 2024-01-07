@@ -573,7 +573,7 @@ class CacheStressor : public Stressor {
     while (true) {
       // const Request& req(wg_->getReq(pid, gen, lastRequestId));
       std::vector<size_t> reqVec(5);
-      const Request& req("hello", reqVec.begin(), reqvec.end());
+      const Request& req("hello", reqVec.begin(), reqVec.end());
       if (config_.checkConsistency && cache_->isInvalidKey(req.key)) {
         continue;
       }
