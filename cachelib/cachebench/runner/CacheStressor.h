@@ -150,35 +150,48 @@ class CacheStressor : public Stressor {
         cache_->getInvalidDestructorCount() >= config_.maxInvalidDestructorCount ||
         cache_->isNvmCacheDisabled() || shouldTestStop())
     {
-        std::terminate();
+      std::terminate();
     }
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
-    assert(req_msgbuf->get_data_size() == sizeof(req_t));
-    req_t request;
-    memcpy(&request, req_msgbuf->buf_, sizeof(req_t));
+    assert(req_msgbuf->get_data_size() == sizeof(Request));
+    Request request;
+    memcpy(&request, req_msgbuf->buf_, sizeof(Request));
 
     // Process request as per stressByDiscreteDistribution.
+    resp_t resp;
+    resp.result = OpResultType::kNop;
+    resp.data = nullptr;
+    resp.data_size = 0;
+    stressByDiscreteDistribution(request, c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
-    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(request.resp_size);
+    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
 
-    // TODO: Write a sequence to buffer.
-    // memcpy(resp_msgbuf.buf_, <SOMETHING FROM CACHE>, request.resp_size);
+    // Write a sequence to buffer.
+    memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size, sizeof(size_t));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data, resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
 
   void server_thread(size_t thread_id) {
     ServerThreadContext c;
     c.thread_id_ = thread_id;
-    
+
+    // Pid.
+    std::mt19937_64 gen(folly::Random::rand64());
+    std::discrete_distribution<> opPoolDist(config_.opPoolDistribution.begin(),
+                                            config_.opPoolDistribution.end());
+    const auto pid = static_cast<PoolId>(opPoolDist(gen));
+    c.pid = pid;
+
     // Throttle function.
     const uint64_t opDelayBatch = config_.opDelayBatch;
     const uint64_t opDelayNs = config_.opDelayNs;
     const std::chrono::nanoseconds opDelay(opDelayNs);
-
     const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
     uint64_t opCounter = 0;
     auto throttleFn = [&] {
@@ -231,8 +244,9 @@ class CacheStressor : public Stressor {
             std::thread([this, throughputStats = &throughputStats_.at(i),
                          threadName = folly::sformat("cb_stressor_{}", i)]() {
               folly::setThreadName(threadName);
-              stressByDiscreteDistribution(*throughputStats);
+              server_thread(i);
             }));
+        erpc::bind_to_core(workers[i], 0, i);
       }
       for (auto& worker : workers) {
         worker.join();
@@ -352,195 +366,188 @@ class CacheStressor : public Stressor {
   // Throughput and Hit/Miss rates are tracked here as well
   //
   // @param stats       Throughput stats
-  void stressByDiscreteDistribution(ThroughputStats& stats) {
-      try {
-        // at the end of every operation, throttle per the config.
-        SCOPE_EXIT { throttleFn(); };
-          // detect refcount leaks when run in  debug mode.
+  void stressByDiscreteDistribution(const Request &req, ServerThreadContext &c, resp_t *resp) {
+    try {
+      auto& stats = c.stats;
+      auto pid = c.pid;
+      // at the end of every operation, throttle per the config.
+      SCOPE_EXIT { c.throttleFn(); };
+        // detect refcount leaks when run in  debug mode.
 #ifndef NDEBUG
-        auto checkCnt = [](int cnt) {
-          if (cnt != 0) {
-            throw std::runtime_error(folly::sformat("Refcount leak {}", cnt));
-          }
-        };
-        checkCnt(cache_->getHandleCountForThread());
-        SCOPE_EXIT { checkCnt(cache_->getHandleCountForThread()); };
+      auto checkCnt = [](int cnt) {
+        if (cnt != 0) {
+          throw std::runtime_error(folly::sformat("Refcount leak {}", cnt));
+        }
+      };
+      checkCnt(cache_->getHandleCountForThread());
+      SCOPE_EXIT { checkCnt(cache_->getHandleCountForThread()); };
 #endif
-        ++stats.ops;
-
-        const auto pid = static_cast<PoolId>(opPoolDist(gen)); // we do not care
-        const Request& req(getReq(pid, gen, lastRequestId));
-        
-        if (*(req.sizeBegin) > 8 && !useEvictionController) {
-          *(req.sizeBegin) -= 8;
-        }
-        if (cacheType == "TinyLFU") {
-          *(req.sizeBegin) += 24;
-        } 
-        if (cacheType == "S3FIFO") {
-          *(req.sizeBegin) += 8;
-        }
-        
-        //filter size larger than 4mb
-        if (*(req.sizeBegin) >= maxAllocSize) {
-          lastRequestId = req.requestId;
-          if (req.requestId) {
-            // req might be deleted after calling notifyResult()
-            // TODO: respond back to client with result via eRPC
-            // wg_->notifyResult(*req.requestId, OpResultType::kGetMiss);
-          }
-          continue;
-        }
-
-        OpType op = req.getOp();
-        const std::string* key = &(req.key);
-        std::string oneHitKey;
-        if (op == OpType::kLoneGet || op == OpType::kLoneSet) {
-          oneHitKey = Request::getUniqueKey();
-          key = &oneHitKey;
-        }
-        if (op == OpType::kDel) {
-          op = OpType::kGet;
-        }
-        OpResultType result(OpResultType::kNop);
-        util::LatencyTracker tracker = util::LatencyTracker(cache_->cacheRequestLatency_);
-        switch (op) {
-        case OpType::kLoneSet:
-        case OpType::kSet: {
-          if (config_.onlySetIfMiss) {
-            auto it = cache_->find(*key);
-            if (it != nullptr) {
-              continue;
-            }
-          }
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
-                          req.admFeatureMap, req.itemValue);
-
-          break;
-        }
-        case OpType::kLoneGet:
-        case OpType::kGet: {
-          ++stats.get;
-          auto slock = chainedItemAcquireSharedLock(*key);
-          auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
-
-          if (ticker_) {
-            ticker_->updateTimeStamp(req.timestamp);
-          }
-          // TODO currently pure lookaside, we should
-          // add a distribution over sequences of requests/access patterns
-          // e.g. get-no-set and set-no-get
-          cache_->recordAccess(*key);
-          auto it = cache_->find(*key);
-          if (it == nullptr) {
-            ++stats.getMiss;
-            result = OpResultType::kGetMiss;
-
-            if (config_.enableLookaside) {
-              // allocate and insert on miss
-              // upgrade access privledges, (lock_upgrade is not
-              // appropriate here)
-              slock = {};
-              xlock = chainedItemAcquireUniqueLock(*key);
-              setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
-                     req.admFeatureMap, req.itemValue);
-            }
-          } //** else if (it->get_is_reinserted()) {
-            // from NVM cache
-            //** result = OpResultType::kGetMiss;
-          //** }
-          else {
-#ifdef TRUE_TTA
-            it->next_timestamp = req.nextTime;
-#endif
-            result = OpResultType::kGetHit;
-          }
-          break;
-        }
-        case OpType::kDel: {
-          ++stats.del;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          auto res = cache_->remove(*key);
-          if (res == CacheT::RemoveRes::kNotFoundInRam) {
-            ++stats.delNotFound;
-          }
-          break;
-        }
-        case OpType::kAddChained: {
-          ++stats.get;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          auto it = cache_->findToWrite(*key);
-          if (!it) {
-            ++stats.getMiss;
-
-            ++stats.set;
-            it = cache_->allocate(pid, *key, *(req.sizeBegin), req.ttlSecs);
-            if (!it) {
-              ++stats.setFailure;
-              break;
-            }
-            populateItem(it);
-            cache_->insertOrReplace(it);
-          }
-          XDCHECK(req.sizeBegin + 1 != req.sizeEnd);
-          bool chainSuccessful = false;
-          for (auto j = req.sizeBegin + 1; j != req.sizeEnd; j++) {
-            ++stats.addChained;
-
-            const auto size = *j;
-            auto child = cache_->allocateChainedItem(it, size);
-            if (!child) {
-              ++stats.addChainedFailure;
-              continue;
-            }
-            chainSuccessful = true;
-            populateItem(child);
-            cache_->addChainedItem(it, std::move(child));
-          }
-          if (chainSuccessful && cache_->consistencyCheckEnabled()) {
-            cache_->trackChainChecksum(it);
-          }
-          break;
-        }
-        case OpType::kUpdate: {
-          ++stats.get;
-          ++stats.update;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          if (ticker_) {
-            ticker_->updateTimeStamp(req.timestamp);
-          }
-          auto it = cache_->findToWrite(*key);
-          if (it == nullptr) {
-            ++stats.getMiss;
-            ++stats.updateMiss;
-            break;
-          }
-          cache_->updateItemRecordVersion(it);
-          break;
-        }
-        case OpType::kCouldExist: {
-          ++stats.couldExistOp;
-          if (!cache_->couldExist(*key)) {
-            ++stats.couldExistOpFalse;
-          }
-          break;
-        }
-        default:
-          throw std::runtime_error(
-              folly::sformat("invalid operation generated: {}", (int)op));
-          break;
-        }
-
+      ++stats.ops;
+      
+      if (*(req.sizeBegin) > 8 && !useEvictionController) {
+        *(req.sizeBegin) -= 8;
+      }
+      if (cacheType == "TinyLFU") {
+        *(req.sizeBegin) += 24;
+      } 
+      if (cacheType == "S3FIFO") {
+        *(req.sizeBegin) += 8;
+      }
+      
+      //filter size larger than 4mb
+      if (*(req.sizeBegin) >= maxAllocSize) {
         lastRequestId = req.requestId;
         if (req.requestId) {
           // req might be deleted after calling notifyResult()
-          // TODO: respond back to client with result via eRPC
-          // wg_->notifyResult(*req.requestId, result);
+          resp->result = OpResultType::kGetMiss;
         }
-      } catch (const cachebench::EndOfTrace& ex) {
+        return;
+      }
+
+      OpType op = req.getOp();
+      const std::string* key = &(req.key);
+      std::string oneHitKey;
+      if (op == OpType::kLoneGet || op == OpType::kLoneSet) {
+        oneHitKey = Request::getUniqueKey();
+        key = &oneHitKey;
+      }
+      if (op == OpType::kDel) {
+        op = OpType::kGet;
+      }
+
+      util::LatencyTracker tracker = util::LatencyTracker(cache_->cacheRequestLatency_);
+      switch (op) {
+      case OpType::kLoneSet:
+      case OpType::kSet: {
+        if (config_.onlySetIfMiss) {
+          auto it = cache_->find(*key);
+          if (it != nullptr) {
+            return;
+          }
+        }
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
+                        req.admFeatureMap, req.itemValue);
+
         break;
       }
+      case OpType::kLoneGet:
+      case OpType::kGet: {
+        ++stats.get;
+        auto slock = chainedItemAcquireSharedLock(*key);
+        auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
+
+        if (ticker_) {
+          ticker_->updateTimeStamp(req.timestamp);
+        }
+        // TODO currently pure lookaside, we should
+        // add a distribution over sequences of requests/access patterns
+        // e.g. get-no-set and set-no-get
+        cache_->recordAccess(*key);
+        auto it = cache_->find(*key);
+        if (it == nullptr) {
+          ++stats.getMiss;
+          resp->result = OpResultType::kGetMiss;
+
+          if (config_.enableLookaside) {
+            // allocate and insert on miss
+            // upgrade access privledges, (lock_upgrade is not
+            // appropriate here)
+            slock = {};
+            xlock = chainedItemAcquireUniqueLock(*key);
+            setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
+                    req.admFeatureMap, req.itemValue);
+          }
+        } //** else if (it->get_is_reinserted()) {
+          // from NVM cache
+          //** result = OpResultType::kGetMiss;
+        //** }
+        else {
+#ifdef TRUE_TTA
+          it->next_timestamp = req.nextTime;
+#endif
+          resp->result = OpResultType::kGetHit;
+          resp->data = it->getMemory();
+          resp->data_size = it->getSize();
+        }
+        break;
+      }
+      case OpType::kDel: {
+        ++stats.del;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        auto res = cache_->remove(*key);
+        if (res == CacheT::RemoveRes::kNotFoundInRam) {
+          ++stats.delNotFound;
+        }
+        break;
+      }
+      case OpType::kAddChained: {
+        ++stats.get;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        auto it = cache_->findToWrite(*key);
+        if (!it) {
+          ++stats.getMiss;
+
+          ++stats.set;
+          it = cache_->allocate(pid, *key, *(req.sizeBegin), req.ttlSecs);
+          if (!it) {
+            ++stats.setFailure;
+            break;
+          }
+          populateItem(it);
+          cache_->insertOrReplace(it);
+        }
+        XDCHECK(req.sizeBegin + 1 != req.sizeEnd);
+        bool chainSuccessful = false;
+        for (auto j = req.sizeBegin + 1; j != req.sizeEnd; j++) {
+          ++stats.addChained;
+
+          const auto size = *j;
+          auto child = cache_->allocateChainedItem(it, size);
+          if (!child) {
+            ++stats.addChainedFailure;
+            continue;
+          }
+          chainSuccessful = true;
+          populateItem(child);
+          cache_->addChainedItem(it, std::move(child));
+        }
+        if (chainSuccessful && cache_->consistencyCheckEnabled()) {
+          cache_->trackChainChecksum(it);
+        }
+        break;
+      }
+      case OpType::kUpdate: {
+        ++stats.get;
+        ++stats.update;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        if (ticker_) {
+          ticker_->updateTimeStamp(req.timestamp);
+        }
+        auto it = cache_->findToWrite(*key);
+        if (it == nullptr) {
+          ++stats.getMiss;
+          ++stats.updateMiss;
+          break;
+        }
+        cache_->updateItemRecordVersion(it);
+        break;
+      }
+      case OpType::kCouldExist: {
+        ++stats.couldExistOp;
+        if (!cache_->couldExist(*key)) {
+          ++stats.couldExistOpFalse;
+        }
+        break;
+      }
+      default:
+        throw std::runtime_error(
+            folly::sformat("invalid operation generated: {}", (int)op));
+        break;
+      }
+    } catch (const cachebench::EndOfTrace& ex) {
+      break;
+    }
   }
 
   // inserts key into the cache if the admission policy also indicates the

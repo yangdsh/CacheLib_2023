@@ -4,6 +4,8 @@
 #include <string>
 
 #include "cachelib/cachebench/runner/Stressor.h"
+#include "cachelib/allocator/memory/Slab.h"
+#include "cachelib/cachebench/util/Request.h"
 #include "rpc.h"
 
 static const std::string kServerHostname = "128.110.219.167";
@@ -20,6 +22,12 @@ struct req_t {
   size_t resp_size;
 };
 
+struct resp_t {
+  OpResultType result;
+  size_t data_size;
+  void* data;
+};
+
 // Per-thread server context
 class ServerThreadContext {
  public:
@@ -27,6 +35,7 @@ class ServerThreadContext {
   erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
   std::function<void()>& throttleFn;
   ThroughputStats& stats;
+  PoolId pid;
 
   ~ServerThreadContext() {}
 };
