@@ -42,6 +42,7 @@
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
 #include "cachelib/cachebench/workload/GeneratorBase.h"
+#include "rpc.h"
 
 namespace facebook {
 namespace cachelib {

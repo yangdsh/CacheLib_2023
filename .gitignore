@@ -22,5 +22,10 @@ cachelib/external/gflags/
 cachelib/external/glog/
 cachelib/external/googletest/
 cachelib/external/sparsemap/
+cachelib/external/lightgbm/
+cachelib/external/mvfst/
+cachelib/external/zstd/
+# eRPC folder
+cachelib/cachebench/eRPC/
 
 opt

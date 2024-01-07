@@ -48,6 +48,13 @@ endif()
 #add_compile_options(-fsanitize=address)
 #add_link_options(-fsanitize=address)
 
+
+add_subdirectory(eRPC)
+target_link_options(cachelib_cachebench PRIVATE "LINKER: -lerpc -lpthread -lnuma -ldl -lgflags")
+target_compile_options(cachelib_cachebench PRIVATE -libverbs -DERPC_INFINIBAND=true)
+target_link_libraries(cachelib_cachebench PUBLIC "${PROJECT_SOURCE_DIR}/cachebench/eRPC/build/liberpc.a")
+target_include_directories(cachelib_cachebench PUBLIC "${PROJECT_SOURCE_DIR}/cachebench/eRPC/src" "${PROJECT_SOURCE_DIR}/cachebench/eRPC/third_party/asio/include")
+
 add_executable (cachebench main.cpp)
 target_link_libraries(cachebench cachelib_cachebench)
 
