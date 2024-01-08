@@ -183,7 +183,7 @@ class CacheStressor : public Stressor {
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size,
            sizeof(size_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), *resp.data,
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data,
            resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
@@ -480,7 +480,7 @@ class CacheStressor : public Stressor {
           it->next_timestamp = req.nextTime;
 #endif
           resp->result = OpResultType::kGetHit;
-          resp->data = &(it->getMemory());
+          resp->data = const_cast<void*>(it->getMemory());
           resp->data_size = it->getSize();
         }
         break;
