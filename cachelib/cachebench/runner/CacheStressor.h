@@ -145,7 +145,7 @@ class CacheStressor : public Stressor {
 
   static void req_handler(erpc::ReqHandle* req_handle, void* _context) {
     auto* c = static_cast<ServerThreadContext*>(_context);
-    CacheStressor* stressor = dynamic_cast<CacheStressor*>(c->stressor.get());
+    CacheStressor* stressor = dynamic_cast<CacheStressor*>(c->stressor);
 
     // Check Cache health status.
     if (stressor->cache_->getInconsistencyCount() >=
