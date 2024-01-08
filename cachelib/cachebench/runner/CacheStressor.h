@@ -145,14 +145,14 @@ class CacheStressor : public Stressor {
 
   static void req_handler(erpc::ReqHandle* req_handle, void* _context) {
     auto* c = static_cast<ServerThreadContext*>(_context);
+    CacheStressor* stressor = dynamic_cast<CacheStressor*>(c->stressor.get());
 
     // Check Cache health status.
-    if (c->stressor->cache_->getInconsistencyCount() >=
-            c->stressor->config_.maxInconsistencyCount ||
-        c->stressor->cache_->getInvalidDestructorCount() >=
-            c->stressor->config_.maxInvalidDestructorCount ||
-        c->stressor->cache_->isNvmCacheDisabled() ||
-        c->stressor->shouldTestStop()) {
+    if (stressor->cache_->getInconsistencyCount() >=
+            stressor->config_.maxInconsistencyCount ||
+        stressor->cache_->getInvalidDestructorCount() >=
+            stressor->config_.maxInvalidDestructorCount ||
+        stressor->cache_->isNvmCacheDisabled() || stressor->shouldTestStop()) {
       std::terminate();
     }
 
@@ -172,7 +172,7 @@ class CacheStressor : public Stressor {
     resp.result = OpResultType::kNop;
     resp.data = nullptr;
     resp.data_size = 0;
-    c->stressor->stressByDiscreteDistribution(request, *c, &resp);
+    stressor->stressByDiscreteDistribution(request, *c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
@@ -183,7 +183,7 @@ class CacheStressor : public Stressor {
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size,
            sizeof(size_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data,
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), *resp.data,
            resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
