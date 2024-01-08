@@ -154,16 +154,20 @@ class CacheStressor : public Stressor {
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
-    assert(req_msgbuf->get_data_size() == sizeof(Request));
-    Request request;
-    memcpy(&request, req_msgbuf->buf_, sizeof(Request));
+    assert(req_msgbuf->get_data_size() == sizeof(req_t));
+    req_t req;
+    memcpy(&req, req_msgbuf->buf_, sizeof(req_t));
+
+    std::vector<size_t> sizes;
+    sizes.push_back(req.size);
+    Request request(req.key, sizes.begin(), sizes.end(), req.op, req.ttl, req.reqId, req.admFeatureM, req.value);
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
     resp.result = OpResultType::kNop;
     resp.data = nullptr;
     resp.data_size = 0;
-    stressByDiscreteDistribution(request, c, &resp);
+    stressByDiscreteDistribution(request, *c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
