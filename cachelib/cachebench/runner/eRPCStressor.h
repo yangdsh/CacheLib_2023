@@ -47,8 +47,6 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
-constexpr uint32_t kNvmCacheWarmUpCheckRate = 1000;
-
 volatile sig_atomic_t ctrl_c_pressed = 0;
 void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
 
@@ -614,40 +612,6 @@ class eRPCStressor : public Stressor {
       it->next_timestamp = nextTime;
 #endif
       return OpResultType::kSetSuccess;
-    }
-  }
-
-  // fetch a request from the workload generator for a particular pool
-  // @param pid             the pool id chosen for the request.
-  // @param gen             the thread local random number generator to be
-  // fed
-  //                        to the workload generator  for constructing the
-  //                        request.
-  // @param lastRequestId   optional information about the last request id
-  // that
-  //                        was given to this thread by the workload
-  //                        generator. This is used to provide continuity by
-  //                        some generator implementations.
-
-  // TODO: This entire function should be on server-side when processing each
-  // request.
-  const Request& getReq(const PoolId& pid,
-                        std::mt19937_64& gen,
-                        std::optional<uint64_t>& lastRequestId) {
-    while (true) {
-      // const Request& req(wg_->getReq(pid, gen, lastRequestId));
-      std::vector<size_t> reqVec(5);
-      const Request req("hello", reqVec.begin(), reqVec.end());
-      if (config_.checkConsistency && cache_->isInvalidKey(req.key)) {
-        continue;
-      }
-      // TODO: allow callback on nvm eviction instead of checking it
-      // repeatedly.
-      if (config_.checkNvmCacheWarmUp &&
-          folly::Random::oneIn(kNvmCacheWarmUpCheckRate)) {
-        checkNvmCacheWarmedUp(req.timestamp);
-      }
-      return req;
     }
   }
 
