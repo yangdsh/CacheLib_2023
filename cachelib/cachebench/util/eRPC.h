@@ -3,8 +3,8 @@
 #include <cstring>
 #include <string>
 
-#include "cachelib/cachebench/runner/Stressor.h"
 #include "cachelib/allocator/memory/Slab.h"
+#include "cachelib/cachebench/runner/Stressor.h"
 #include "cachelib/cachebench/util/Request.h"
 #include "rpc.h"
 
@@ -23,13 +23,8 @@ static constexpr size_t kNumBgThreads = 0;
 
 // Request will ask for certain size response.
 struct req_t {
-  OpType op,
-  std::string key,
-  std::string value,
-  size_t size,
-  uint32_t ttl,
-  uint64_t reqId,
-  std::unordered_map<std::string, std::string> admFeatureM,
+  OpType op, std::string key, std::string value, size_t size, uint32_t ttl,
+      uint64_t reqId, std::unordered_map<std::string, std::string> admFeatureM,
 };
 
 struct resp_t {
@@ -44,6 +39,7 @@ class ServerThreadContext {
   size_t thread_id_;
   erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
   std::function<void()> throttleFn;
+  Stressor stressor;
   ThroughputStats stats;
   PoolId pid;
 

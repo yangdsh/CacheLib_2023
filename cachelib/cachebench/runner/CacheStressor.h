@@ -19,8 +19,8 @@
 #include <folly/Random.h>
 #include <folly/TokenBucket.h>
 #include <folly/system/ThreadName.h>
-
 #include <signal.h>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -30,7 +30,7 @@
 #include <unordered_set>
 
 #ifdef BFADM
-  #include "cachelib/common/BloomFilter.h"
+#include "cachelib/common/BloomFilter.h"
 #endif
 
 #include "cachelib/cachebench/cache/Cache.h"
@@ -40,8 +40,8 @@
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
-#include "cachelib/cachebench/workload/GeneratorBase.h"
 #include "cachelib/cachebench/util/eRPC.h"
+#include "cachelib/cachebench/workload/GeneratorBase.h"
 
 namespace facebook {
 namespace cachelib {
@@ -66,7 +66,9 @@ class CacheStressor : public Stressor {
   // @param cacheConfig   the config to instantiate the cache instance
   // @param config        stress test config
   // @param generator     workload  generator
-  CacheStressor(CacheConfig cacheConfig, StressorConfig config, std::unique_ptr<GeneratorBase>&&)
+  CacheStressor(CacheConfig cacheConfig,
+                StressorConfig config,
+                std::unique_ptr<GeneratorBase>&&)
       : config_(std::move(config)),
         throughputStats_(config_.numThreads),
         hardcodedString_(genHardcodedString()),
@@ -75,7 +77,7 @@ class CacheStressor : public Stressor {
     //** useEvictionController = cacheConfig.useEvictionControl;
     useNVM = cacheConfig.nvmCacheSizeMB;
     cacheType = cacheConfig.allocator;
-  
+
     // if either consistency check is enabled or if we want to move
     // items during slab release, we want readers and writers of chained
     // allocs to be synchronized
@@ -146,9 +148,9 @@ class CacheStressor : public Stressor {
 
     // Check Cache health status.
     if (cache_->getInconsistencyCount() >= config_.maxInconsistencyCount ||
-        cache_->getInvalidDestructorCount() >= config_.maxInvalidDestructorCount ||
-        cache_->isNvmCacheDisabled() || shouldTestStop())
-    {
+        cache_->getInvalidDestructorCount() >=
+            config_.maxInvalidDestructorCount ||
+        cache_->isNvmCacheDisabled() || shouldTestStop()) {
       std::terminate();
     }
 
@@ -160,7 +162,8 @@ class CacheStressor : public Stressor {
 
     std::vector<size_t> sizes;
     sizes.push_back(req.size);
-    Request request(req.key, sizes.begin(), sizes.end(), req.op, req.ttl, req.reqId, req.admFeatureM, req.value);
+    Request request(req.key, sizes.begin(), sizes.end(), req.op, req.ttl,
+                    req.reqId, req.admFeatureM, req.value);
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
@@ -171,18 +174,22 @@ class CacheStressor : public Stressor {
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
-    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
+    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
+        sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
 
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size, sizeof(size_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data, resp.data_size);
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size,
+           sizeof(size_t));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data,
+           resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
 
   void server_thread(size_t thread_id) {
     ServerThreadContext c;
     c.thread_id_ = thread_id;
+    c.stressor = this;
 
     // Pid.
     std::mt19937_64 gen(folly::Random::rand64());
@@ -206,7 +213,7 @@ class CacheStressor : public Stressor {
       limitRate();
     };
     c.throttleFn = throttleFn;
-    
+
     // Throughput stats from object.
     c.stats = throughputStats_.at(thread_id);
 
@@ -243,9 +250,9 @@ class CacheStressor : public Stressor {
       std::vector<std::thread> workers;
 
       for (uint64_t i = 0; i < config_.numThreads; ++i) {
-        workers.push_back(
-            std::thread([this, throughputStats = &throughputStats_.at(i),
-                         threadName = folly::sformat("cb_stressor_{}", i), i]() {
+        workers.push_back(std::thread(
+            [this, throughputStats = &throughputStats_.at(i),
+             threadName = folly::sformat("cb_stressor_{}", i), i]() {
               folly::setThreadName(threadName);
               server_thread(i);
             }));
@@ -282,9 +289,7 @@ class CacheStressor : public Stressor {
 
   // abort the stress run by indicating to the workload generator and
   // delegating to the base class abort() to stop the test.
-  void abort() override {
-    Stressor::abort();
-  }
+  void abort() override { Stressor::abort(); }
 
   // obtain stats from the cache instance.
   Stats getCacheStats() const override { return cache_->getStats(); }
@@ -369,7 +374,9 @@ class CacheStressor : public Stressor {
   // Throughput and Hit/Miss rates are tracked here as well
   //
   // @param stats       Throughput stats
-  void stressByDiscreteDistribution(const Request &req, ServerThreadContext &c, resp_t *resp) {
+  void stressByDiscreteDistribution(const Request& req,
+                                    ServerThreadContext& c,
+                                    resp_t* resp) {
     try {
       auto& stats = c.stats;
       auto pid = c.pid;
@@ -386,18 +393,18 @@ class CacheStressor : public Stressor {
       SCOPE_EXIT { checkCnt(cache_->getHandleCountForThread()); };
 #endif
       ++stats.ops;
-      
+
       if (*(req.sizeBegin) > 8 && !useEvictionController) {
         *(req.sizeBegin) -= 8;
       }
       if (cacheType == "TinyLFU") {
         *(req.sizeBegin) += 24;
-      } 
+      }
       if (cacheType == "S3FIFO") {
         *(req.sizeBegin) += 8;
       }
-      
-      //filter size larger than 4mb
+
+      // filter size larger than 4mb
       if (*(req.sizeBegin) >= maxAllocSize) {
         // lastRequestId = req.requestId;
         if (req.requestId) {
@@ -418,7 +425,8 @@ class CacheStressor : public Stressor {
         op = OpType::kGet;
       }
 
-      util::LatencyTracker tracker = util::LatencyTracker(cache_->cacheRequestLatency_);
+      util::LatencyTracker tracker =
+          util::LatencyTracker(cache_->cacheRequestLatency_);
       switch (op) {
       case OpType::kLoneSet:
       case OpType::kSet: {
@@ -429,8 +437,8 @@ class CacheStressor : public Stressor {
           }
         }
         auto lock = chainedItemAcquireUniqueLock(*key);
-        resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
-                        req.admFeatureMap, req.itemValue);
+        resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
+                              req.nextTime, req.admFeatureMap, req.itemValue);
 
         break;
       }
@@ -459,7 +467,7 @@ class CacheStressor : public Stressor {
             slock = {};
             xlock = chainedItemAcquireUniqueLock(*key);
             setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
-                    req.admFeatureMap, req.itemValue);
+                   req.admFeatureMap, req.itemValue);
           }
         } //** else if (it->get_is_reinserted()) {
           // from NVM cache
@@ -577,14 +585,15 @@ class CacheStressor : public Stressor {
       return OpResultType::kSetSkip;
     }
 #ifdef BFADM
-    if (!bf_->couldExist(0, hasher_(*key)) && !bf_->couldExist(1, hasher_(*key))) {
+    if (!bf_->couldExist(0, hasher_(*key)) &&
+        !bf_->couldExist(1, hasher_(*key))) {
       bf_->set(bf_insert_id_, hasher_(*key));
       bf_insert_cnt_ += 1;
       if (bf_insert_cnt_ * 4 > bf_size_) {
         std::lock_guard<std::mutex> guard(bf_mutex_);
         if (bf_insert_cnt_ * 4 > bf_size_) {
-          bf_->clear(1-bf_insert_id_);
-          bf_insert_id_ = 1-bf_insert_id_;
+          bf_->clear(1 - bf_insert_id_);
+          bf_insert_id_ = 1 - bf_insert_id_;
           bf_insert_cnt_ = 0;
           std::cout << "reset adm Bloom Filter" << std::endl;
         }
@@ -598,8 +607,7 @@ class CacheStressor : public Stressor {
     if (it == nullptr) {
       ++stats.setFailure;
       return OpResultType::kSetFailure;
-    }
-    else {
+    } else {
       populateItem(it, itemValue);
       cache_->insertOrReplace(it);
 #ifdef TRUE_TTA
@@ -621,7 +629,8 @@ class CacheStressor : public Stressor {
   //                        generator. This is used to provide continuity by
   //                        some generator implementations.
 
-  // TODO: This entire function should be on server-side when processing each request.
+  // TODO: This entire function should be on server-side when processing each
+  // request.
   const Request& getReq(const PoolId& pid,
                         std::mt19937_64& gen,
                         std::optional<uint64_t>& lastRequestId) {
@@ -658,7 +667,8 @@ class CacheStressor : public Stressor {
       return;
     }
     if (cache_->hasNvmCacheWarmedUp()) {
-      //wg_->setNvmCacheWarmedUp(requestTimestamp); // this is a do nothing for KVReplayGenerator
+      // wg_->setNvmCacheWarmedUp(requestTimestamp); // this is a do nothing for
+      // KVReplayGenerator
       XLOG(INFO) << "NVM cache has been warmed up";
       hasNvmCacheWarmedUp_ = true;
     }
@@ -691,7 +701,7 @@ class CacheStressor : public Stressor {
   bool useEvictionController = 0;
   bool useNVM = 0;
   uint64_t avgSize = 0;
-  uint64_t maxAllocSize = 1024*1024;
+  uint64_t maxAllocSize = 1024 * 1024;
 
 #ifdef BFADM
   std::unique_ptr<BloomFilter> bf_;
