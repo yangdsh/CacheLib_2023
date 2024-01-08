@@ -158,9 +158,9 @@ std::unique_ptr<GeneratorBase> makeGenerator(const StressorConfig& config) {
 std::unique_ptr<Stressor> Stressor::makeStressor(
     const CacheConfig& cacheConfig, const StressorConfig& stressorConfig_) {
   StressorConfig stressorConfig = stressorConfig_;
-    stressorConfig.allocFactor = cacheConfig.allocFactor;
-    stressorConfig.maxAllocSize = cacheConfig.maxAllocSize;
-    stressorConfig.minAllocSize = cacheConfig.minAllocSize;
+  stressorConfig.allocFactor = cacheConfig.allocFactor;
+  stressorConfig.maxAllocSize = cacheConfig.maxAllocSize;
+  stressorConfig.minAllocSize = cacheConfig.minAllocSize;
   if (stressorConfig.name == "high_refcount") {
     return std::make_unique<HighRefcountStressor>(cacheConfig,
                                                   stressorConfig.numOps);
@@ -193,20 +193,20 @@ std::unique_ptr<Stressor> Stressor::makeStressor(
           cacheConfig, stressorConfig, std::move(generator));
     }
   } else {
-    auto generator = makeGenerator(stressorConfig);
+    // auto generator = makeGenerator(stressorConfig);
     if (cacheConfig.allocator == "LRU") {
       // default allocator is LRU, other allocator types should be added here
-      return std::make_unique<CacheStressor<LruAllocator>>(
-          cacheConfig, stressorConfig, std::move(generator));
+      return std::make_unique<CacheStressor<LruAllocator>>(cacheConfig,
+                                                           stressorConfig);
     } else if (cacheConfig.allocator == "LRU2Q") {
-      return std::make_unique<CacheStressor<Lru2QAllocator>>(
-          cacheConfig, stressorConfig, std::move(generator));
+      return std::make_unique<CacheStressor<Lru2QAllocator>>(cacheConfig,
+                                                             stressorConfig);
     } else if (cacheConfig.allocator == "TinyLFU") {
-      return std::make_unique<CacheStressor<TinyLFUAllocator>>(
-          cacheConfig, stressorConfig, std::move(generator));
+      return std::make_unique<CacheStressor<TinyLFUAllocator>>(cacheConfig,
+                                                               stressorConfig);
     } else if (cacheConfig.allocator == "S3FIFO") {
-      return std::make_unique<CacheStressor<S3FIFOAllocator>>(
-          cacheConfig, stressorConfig, std::move(generator));
+      return std::make_unique<CacheStressor<S3FIFOAllocator>>(cacheConfig,
+                                                              stressorConfig);
     }
   }
   throw std::invalid_argument("Invalid config");
