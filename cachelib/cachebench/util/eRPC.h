@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/_types/_size_t.h>
 
 #include <cstring>
 #include <string>
@@ -6,6 +7,7 @@
 #include "cachelib/allocator/memory/Slab.h"
 #include "cachelib/cachebench/runner/Stressor.h"
 #include "cachelib/cachebench/util/Request.h"
+#include "cachelib/cachebench/workload/GeneratorBase.h"
 #include "rpc.h"
 
 namespace facebook {
@@ -21,15 +23,25 @@ static constexpr size_t kAppEvLoopMs = 1000;
 static constexpr size_t kServerBasePort = 31850;
 static constexpr size_t kNumBgThreads = 0;
 
-// Request will ask for certain size response.
-struct req_t {
+// Request metadata.
+struct req_meta_t {
   OpType op;
-  std::string key;
-  std::string value;
-  size_t size;
   uint32_t ttl;
   uint64_t reqId;
-  std::unordered_map<std::string, std::string> admFeatureM;
+  size_t key_size;
+  size_t value_size;
+};
+
+// Request data.
+struct req_data_t {
+  std::string key;
+  std::string value;
+};
+
+// Request will ask for certain size response.
+struct req_t {
+  struct req_meta_t meta;
+  struct req_data_t data;
 };
 
 struct resp_t {
@@ -51,6 +63,50 @@ class ServerThreadContext {
 
   ~ServerThreadContext() {}
 };
+
+// Per-thread application context
+class ClientThreadContext {
+ public:
+  size_t thread_id_;
+  erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
+  int session_num = 0;                         // Session number
+
+  GeneratorBase* gen;
+
+  size_t num_sm_resps_ = 0; // Number of SM responses
+  size_t num_resps_ = 0;    // Number of responses
+
+  erpc::MsgBuffer req_msgbuf;
+  erpc::MsgBuffer resp_msgbuf;
+
+  ~ClientThreadContext() {}
+};
+
+/// A basic session management handler that expects successful responses.
+void basic_sm_handler(int session_num,
+                      erpc::SmEventType sm_event_type,
+                      erpc::SmErrType sm_err_type,
+                      void* _context) {
+  auto* c = static_cast<ClientThreadContext*>(_context);
+  c->num_sm_resps_++;
+
+  erpc::rt_assert(
+      sm_err_type == erpc::SmErrType::kNoError,
+      "SM response with error " + erpc::sm_err_type_str(sm_err_type));
+
+  if (!(sm_event_type == erpc::SmEventType::kConnected ||
+        sm_event_type == erpc::SmEventType::kDisconnected)) {
+    throw std::runtime_error("Received unexpected SM event.");
+  }
+
+  fprintf(stderr,
+          "Rpc %u: Session number %d %s. Error %s. "
+          "Time elapsed = %.3f s.\n",
+          c->rpc_->get_rpc_id(), session_num,
+          erpc::sm_event_type_str(sm_event_type).c_str(),
+          erpc::sm_err_type_str(sm_err_type).c_str(),
+          c->rpc_->sec_since_creation());
+}
 
 } // namespace cachebench
 } // namespace cachelib

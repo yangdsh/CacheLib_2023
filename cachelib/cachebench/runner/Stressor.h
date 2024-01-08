@@ -69,6 +69,10 @@ class Stressor {
   static std::unique_ptr<Stressor> makeStressor(
       const CacheConfig& cacheConfig, const StressorConfig& stressorConfig);
 
+  // for eRPC use only: create a detached generator class
+  static std::unique_ptr<GeneratorBase> makeGenerator(
+      const StressorConfig& config);
+
   virtual ~Stressor() {}
 
   // report the stats from the cache  while the stress test is being run.

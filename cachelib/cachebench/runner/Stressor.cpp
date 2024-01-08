@@ -16,6 +16,8 @@
 
 #include "cachelib/cachebench/runner/Stressor.h"
 
+#include <memory>
+
 #include "cachelib/allocator/CacheAllocator.h"
 #include "cachelib/cachebench/runner/AsyncCacheStressor.h"
 #include "cachelib/cachebench/runner/CacheStressor.h"
@@ -26,6 +28,7 @@
 #include "cachelib/cachebench/workload/OnlineGenerator.h"
 #include "cachelib/cachebench/workload/PieceWiseReplayGenerator.h"
 #include "cachelib/cachebench/workload/WorkloadGenerator.h"
+#include "cachelib/cachebench/workload/eRPCGenerator.h"
 #include "cachelib/common/Utils.h"
 
 namespace facebook {
@@ -137,7 +140,6 @@ void ThroughputStats::render(uint64_t elapsedTimeNs,
       util::narrow_cast<uint64_t>(addChainedSuccessRate);
 }
 
-namespace {
 std::unique_ptr<GeneratorBase> makeGenerator(const StressorConfig& config) {
   if (config.generator == "piecewise-replay") {
     return std::make_unique<PieceWiseReplayGenerator>(config);
@@ -149,12 +151,12 @@ std::unique_ptr<GeneratorBase> makeGenerator(const StressorConfig& config) {
     return std::make_unique<WorkloadGenerator>(config);
   } else if (config.generator == "online") {
     return std::make_unique<OnlineGenerator>(config);
-
+  } else if (config.generator == "eRPC") {
+    return std::make_unique<eRPCGenerator>(config);
   } else {
     throw std::invalid_argument("Invalid config");
   }
 }
-} // namespace
 
 std::unique_ptr<Stressor> Stressor::makeStressor(
     const CacheConfig& cacheConfig, const StressorConfig& stressorConfig_) {

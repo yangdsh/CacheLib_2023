@@ -56,6 +56,9 @@ DEFINE_int32(timeout_seconds,
              0,
              "Maximum allowed seconds for running test. 0 means no timeout");
 
+// eRPCStressor flags.
+DEFINE_bool(client, false, "used with eRPCStressor only");
+
 struct sigaction act;
 std::unique_ptr<facebook::cachelib::cachebench::Runner> runnerInstance;
 std::unique_ptr<std::thread> stopperThread;
@@ -115,6 +118,8 @@ bool checkArgsValidity() {
 int main(int argc, char** argv) {
   using namespace facebook::cachelib;
   using namespace facebook::cachelib::cachebench;
+
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
 #ifdef CACHEBENCH_FB_ENV
   facebook::initFacebook(&argc, &argv);

@@ -18,6 +18,8 @@
 
 #include "cachelib/cachebench/runner/Stressor.h"
 
+DECLARE_bool(client);
+
 namespace facebook {
 namespace cachelib {
 namespace cachebench {
@@ -29,31 +31,48 @@ bool Runner::run(std::chrono::seconds progressInterval,
                  const std::string& progressStatsFile) {
   ProgressTracker tracker{*stressor_, progressStatsFile};
 
-  stressor_->start();
+  if (FLAGS_client) {
+    eRPCStressor* erpc_stressor = dynamic_cast<eRPCStressor*>(stressor_.get());
+    if (erpc_stressor == NULL) {
+      fprintf(stderr,
+              "The --client flag must only be used when configured with "
+              "eRPCStressor. Exiting...\n");
+      exit(2);
+    } else {
+      auto generator = makeGenerator(stressorConfig);
+    }
+  } else {
+    stressor_->start();
+  }
+
   progressInterval = std::chrono::seconds(1);
 
   if (!tracker.start(progressInterval)) {
     throw std::runtime_error("Cannot start ProgressTracker.");
   }
 
-  stressor_->finish();
+  if (FLAGS_client) {
+    return true;
+  } else {
+    stressor_->finish();
 
-  uint64_t durationNs = stressor_->getTestDurationNs();
-  auto cacheStats = stressor_->getCacheStats();
-  auto opsStats = stressor_->aggregateThroughputStats();
-  tracker.stop();
+    uint64_t durationNs = stressor_->getTestDurationNs();
+    auto cacheStats = stressor_->getCacheStats();
+    auto opsStats = stressor_->aggregateThroughputStats();
+    tracker.stop();
 
-  std::cout << "== Test Results ==\n== Allocator Stats ==" << std::endl;
-  cacheStats.render(std::cout);
+    std::cout << "== Test Results ==\n== Allocator Stats ==" << std::endl;
+    cacheStats.render(std::cout);
 
-  std::cout << "\n== Throughput for  ==\n";
-  opsStats.render(durationNs, std::cout);
+    std::cout << "\n== Throughput for  ==\n";
+    opsStats.render(durationNs, std::cout);
 
-  stressor_->renderWorkloadGeneratorStats(durationNs, std::cout);
-  std::cout << std::endl;
+    stressor_->renderWorkloadGeneratorStats(durationNs, std::cout);
+    std::cout << std::endl;
 
-  stressor_.reset();
-  return cacheStats.renderIsTestPassed(std::cout);
+    stressor_.reset();
+    return cacheStats.renderIsTestPassed(std::cout);
+  }
 }
 
 void Runner::run(folly::UserCounters& counters) {

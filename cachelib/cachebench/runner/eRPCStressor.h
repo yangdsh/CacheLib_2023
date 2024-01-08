@@ -154,14 +154,21 @@ class eRPCStressor : public Stressor {
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
-    assert(req_msgbuf->get_data_size() == sizeof(req_t));
-    req_t req;
-    memcpy(&req, req_msgbuf->buf_, sizeof(req_t));
+
+    // Read request metadata from request buffer.
+    req_meta_t meta;
+    memcpy(&meta, req_msgbuf->buf_, sizeof(req_meta_t));
+
+    // Read the actual request from request buffer.
+    req_data_t data;
+    memcpy(&data, req_msgbuf->buf_ + sizeof(req_meta_t),
+           meta.key_size + meta.value_size);
+    std::unordered_map<std::string, std::string> admFeatureM;
 
     std::vector<size_t> sizes;
-    sizes.push_back(req.size);
-    Request request(req.key, sizes.begin(), sizes.end(), req.op, req.ttl,
-                    req.reqId, req.admFeatureM, req.value);
+    sizes.push_back(meta.value_size);
+    Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
+                    meta.reqId, admFeatureM, data.value);
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
@@ -174,6 +181,11 @@ class eRPCStressor : public Stressor {
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
     resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
         sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
+
+    // resp.data_size describes the number of bytes in resp as it was given
+    // to us by the cache. However, on the client size, we also expect `size`
+    // number of bytes and include that in the request as req.sizeBegin. Hence
+    // if req.sizeBegin < resp.data_size, then only return req.sizeBegin bytes.
 
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));

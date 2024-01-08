@@ -22,13 +22,17 @@
 #include <folly/lang/Aligned.h>
 #include <folly/logging/xlog.h>
 #include <folly/system/ThreadName.h>
+#include <signal.h>
+#include <sys/_types/_size_t.h>
 
 #include "cachelib/cachebench/cache/Cache.h"
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
-#include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/ReplayGeneratorBase.h"
+
+volatile sig_atomic_t ctrl_c_pressed = 0;
+void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
 
 namespace facebook {
 namespace cachelib {
@@ -61,14 +65,14 @@ struct ReqWrapper {
   uint32_t repeats_{0};
 };
 
-// KVReplayGenerator generates the cachelib requests based the trace data
+// eRPCGenerator generates the cachelib requests based the trace data
 // read from the given trace file(s).
-// KVReplayGenerator supports amplifying the key population by appending
+// eRPCGenerator supports amplifying the key population by appending
 // suffixes (i.e., stream ID) to each key read from the trace file.
 // In order to minimize the contentions for the request submission queues
 // which might need to be dispatched by multiple stressor threads,
 // the requests are sharded to each stressor by doing hashing over the key.
-class KVReplayGenerator : public ReplayGeneratorBase {
+class eRPCGenerator : public ReplayGeneratorBase {
  public:
   // Default order is key,op,size,op_count,key_size,ttl
   enum SampleFields : uint8_t {
@@ -95,23 +99,122 @@ class KVReplayGenerator : public ReplayGeneratorBase {
       {SampleFields::NEXT, false, {"next"}},
       {SampleFields::TTL, false, {"ttl"}}};
 
-  explicit KVReplayGenerator(const StressorConfig& config)
+  explicit eRPCGenerator(const StressorConfig& config)
       : ReplayGeneratorBase(config), traceStream_(config, 0, columnTable_) {
     for (uint32_t i = 0; i < numShards_; ++i) {
       stressorCtxs_.emplace_back(std::make_unique<StressorCtx>(i));
     }
 
+    // Start the thread that reads the trace file and generates requests to put
+    // on the queue.
     genWorker_ = std::thread([this] {
       folly::setThreadName("cb_replay_gen");
       genRequests();
     });
 
     XLOGF(INFO,
-          "Started KVReplayGenerator (amp factor {}, # of stressor threads {})",
+          "Started eRPCGenerator (amp factor {}, # of stressor threads {})",
           ampFactor_, numShards_);
+
+    // Start the client threads, one client per each port on the server.
+    signal(SIGINT, ctrl_c_handler);
+    std::vector<std::thread> send_threads(numShards_);
+    for (size_t i = 0; i < numShards_;; i++) {
+      send_threads[i] = std::thread(thread_func, i);
+    }
+    for (auto& send_thread : send_threads)
+      send_thread.join();
   }
 
-  virtual ~KVReplayGenerator() {
+  // Send a singular request.
+  void send_reqs(ClientThreadContext* c) {
+    std::mt19937_64 gen(folly::Random::rand64());
+    const Request& req(getReq(0, gen, 0)); // ignore pid and lastRequestId
+
+    // Translate Request to eRPC req_t.
+    req_meta_t erpc_meta;
+    erpc_meta.op = req.getOp();
+    erpc_meta.ttl = req.ttlSecs;
+    erpc_meta.reqId = req.requestId;
+    erpc_meta.key_size = req.key.size();
+    erpc_meta.value_size = req.itemValue.size();
+
+    req_data_t erpc_data;
+    erpc_data.key = req.key;
+    erpc_data.value = req.itemValue;
+
+    // Allocate request buffer based on the size of the request and fill it.
+    c->req_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
+        sizeof(req_meta_t) + erpc_meta.key_size + erpc_meta.value_size);
+
+    memcpy(c->req_msgbuf.buf_, reinterpret_cast<char*>(&erpc_meta),
+           sizeof(req_meta_t));
+    memcpy(c->req_msgbuf.buf_ + sizeof(req_meta_t),
+           reinterpret_cast<char*>(&erpc_data),
+           erpc_meta.key_size + erpc_meta.value_size);
+
+    // Prepare response buffer.
+    c->resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
+        *(req.sizeBegin) + sizeof(OpResultType) + sizeof(size_t));
+
+    // Send the request.
+    c->rpc_->enqueue_request(c->session_num, kReqType, &req_msgbuf,
+                             &c->resp_msgbuf, cont_func, nullptr);
+  }
+
+  // callback function after receiving response.
+  static void cont_func(void* _context, void* _tag) {
+    auto* c = static_cast<ClientThreadContext*>(_context);
+    eRPCGenerator* gen = dynamic_cast<eRPCGenerator*>(c->gen);
+
+    const erpc::MsgBuffer& resp_msgbuf = c->resp_msgbuf;
+    c->rpc_->free_msg_buffer(resp_msgbuf);
+
+    c->num_resps_++;
+    gen->send_reqs(c);
+  }
+
+  void connect_session(ClientThreadContext& c) {
+    std::string server_uri =
+        kServerHostname + ":" + std::to_string(kServerBasePort + c.thread_id_);
+    int session_num = c.rpc_->create_session(server_uri, c.thread_id_);
+    erpc::rt_assert(session_num >= 0, "Failed to create session");
+    c.session_num = session_num;
+
+    while (c.num_sm_resps_ != 1) {
+      c.rpc_->run_event_loop_once();
+      if (ctrl_c_pressed == 1)
+        return;
+    }
+    printf("thread %zu connected!\n", c.thread_id_);
+  }
+
+  void thread_func(size_t thread_id) {
+    ClientThreadContext c;
+    c.thread_id_ = thread_id;
+    c.gen = this;
+
+    std::string client_uri =
+        kClientHostname + ":" + std::to_string(kServerBasePort + c.thread_id_);
+    erpc::Nexus nexus(client_uri);
+
+    erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void*>(&c),
+                                    static_cast<uint8_t>(thread_id),
+                                    basic_sm_handler, kPhyPort);
+    rpc.retry_connect_on_invalid_rpc_id_ = true;
+    c.rpc_ = &rpc;
+
+    connect_session(c);
+
+    // Start work
+    send_reqs(&c);
+    while (c.num_resps_ < config_.numOps && !shouldShutdown() &&
+           ctrl_c_pressed != 1) {
+      rpc.run_event_loop(kAppEvLoopMs);
+    }
+  }
+
+  virtual ~eRPCGenerator() {
     XCHECK(shouldShutdown());
     if (genWorker_.joinable()) {
       genWorker_.join();
@@ -125,7 +228,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
       std::optional<uint64_t> lastRequestId = std::nullopt) override;
 
   void renderStats(uint64_t, std::ostream& out) const override {
-    out << std::endl << "== KVReplayGenerator Stats ==" << std::endl;
+    out << std::endl << "== eRPCGenerator Stats ==" << std::endl;
 
     out << folly::sformat("{}: {:.2f} million (parse error: {})",
                           "Total Processed Samples",
@@ -222,8 +325,8 @@ class KVReplayGenerator : public ReplayGeneratorBase {
   }
 };
 
-inline bool KVReplayGenerator::parseRequest(const std::string& line,
-                                            std::unique_ptr<ReqWrapper>& req) {
+inline bool eRPCGenerator::parseRequest(const std::string& line,
+                                        std::unique_ptr<ReqWrapper>& req) {
   if (!traceStream_.setNextLine(line)) {
     return false;
   }
@@ -298,7 +401,7 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   return true;
 }
 
-inline std::unique_ptr<ReqWrapper> KVReplayGenerator::getReqInternal() {
+inline std::unique_ptr<ReqWrapper> eRPCGenerator::getReqInternal() {
   auto reqWrapper = std::make_unique<ReqWrapper>();
   do {
     std::string line;
@@ -318,7 +421,7 @@ inline std::unique_ptr<ReqWrapper> KVReplayGenerator::getReqInternal() {
 
 uint64_t cnt = 0;
 
-inline void KVReplayGenerator::genRequests() {
+inline void eRPCGenerator::genRequests() {
   while (!shouldShutdown()) {
     std::unique_ptr<ReqWrapper> reqWrapper;
     try {
@@ -359,9 +462,9 @@ inline void KVReplayGenerator::genRequests() {
 thread_local int keySuffixLocal = 100;
 thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
 
-const Request& KVReplayGenerator::getReq(uint8_t,
-                                         std::mt19937_64&,
-                                         std::optional<uint64_t>) {
+const Request& eRPCGenerator::getReq(uint8_t,
+                                     std::mt19937_64&,
+                                     std::optional<uint64_t>) {
   std::unique_ptr<ReqWrapper> reqWrapper;
   auto& stressorCtx = getStressorCtx();
   auto& reqQ = *stressorCtx.reqQueue_;
@@ -408,7 +511,7 @@ const Request& KVReplayGenerator::getReq(uint8_t,
   return reqPtr->req_;
 }
 
-void KVReplayGenerator::notifyResult(uint64_t requestId, OpResultType) {
+void eRPCGenerator::notifyResult(uint64_t requestId, OpResultType) {
   // requestId should point to the ReqWrapper object. The ownership is taken
   // here to do the clean-up properly if not resubmitted
   std::unique_ptr<ReqWrapper> reqWrapper(
