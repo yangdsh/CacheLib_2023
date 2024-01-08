@@ -23,8 +23,13 @@ static constexpr size_t kNumBgThreads = 0;
 
 // Request will ask for certain size response.
 struct req_t {
-  OpType op, std::string key, std::string value, size_t size, uint32_t ttl,
-      uint64_t reqId, std::unordered_map<std::string, std::string> admFeatureM,
+  OpType op;
+  std::string key;
+  std::string value;
+  size_t size;
+  uint32_t ttl;
+  uint64_t reqId;
+  std::unordered_map<std::string, std::string> admFeatureM;
 };
 
 struct resp_t {
