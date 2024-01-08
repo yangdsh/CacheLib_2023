@@ -35,7 +35,8 @@ struct req_t {
 struct resp_t {
   OpResultType result;
   size_t data_size;
-  void* data;
+  // void* data;
+  void* const* data;
 };
 
 // Per-thread server context

@@ -143,14 +143,16 @@ class CacheStressor : public Stressor {
 
   ~CacheStressor() override { finish(); }
 
-  void req_handler(erpc::ReqHandle* req_handle, void* _context) {
+  static void req_handler(erpc::ReqHandle* req_handle, void* _context) {
     auto* c = static_cast<ServerThreadContext*>(_context);
 
     // Check Cache health status.
-    if (cache_->getInconsistencyCount() >= config_.maxInconsistencyCount ||
-        cache_->getInvalidDestructorCount() >=
-            config_.maxInvalidDestructorCount ||
-        cache_->isNvmCacheDisabled() || shouldTestStop()) {
+    if (c->stressor->cache_->getInconsistencyCount() >=
+            c->stressor->config_.maxInconsistencyCount ||
+        c->stressor->cache_->getInvalidDestructorCount() >=
+            c->stressor->config_.maxInvalidDestructorCount ||
+        c->stressor->cache_->isNvmCacheDisabled() ||
+        c->stressor->shouldTestStop()) {
       std::terminate();
     }
 
@@ -170,7 +172,7 @@ class CacheStressor : public Stressor {
     resp.result = OpResultType::kNop;
     resp.data = nullptr;
     resp.data_size = 0;
-    stressByDiscreteDistribution(request, *c, &resp);
+    c->stressor->stressByDiscreteDistribution(request, *c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
@@ -221,7 +223,7 @@ class CacheStressor : public Stressor {
     size_t port = kServerBasePort + thread_id;
     std::string server_uri = kServerHostname + ":" + std::to_string(port);
     erpc::Nexus nexus(server_uri, 0, kNumBgThreads);
-    nexus.register_req_func(kReqType, this->req_handler);
+    nexus.register_req_func(kReqType, req_handler);
     erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
                                     static_cast<uint8_t>(thread_id), nullptr,
                                     kPhyPort);
@@ -478,7 +480,7 @@ class CacheStressor : public Stressor {
           it->next_timestamp = req.nextTime;
 #endif
           resp->result = OpResultType::kGetHit;
-          resp->data = it->getMemory();
+          resp->data = &(it->getMemory());
           resp->data_size = it->getSize();
         }
         break;
