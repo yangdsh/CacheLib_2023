@@ -1,12 +1,12 @@
 {
   "cache_config": {
-    "allocator": "LRU",
-    "cacheSizeMB": 1024, 
+    "allocator": "S3FIFO",
+    "cacheSizeMB": 1024,
     "useEvictionControl": true,
     "MLConfig": "use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,max_batch_size,10000,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,2,ml_mess_mode,0",
-    "poolRebalanceIntervalSec" : 0,
-    "moveOnSlabRelease" : true,
-    "rebalanceMinSlabs" : 2,
+    "poolRebalanceIntervalSec": 0,
+    "moveOnSlabRelease": true,
+    "rebalanceMinSlabs": 2,
     "rebalanceStrategy": "hits",
     "lruRefreshSec_": 0,
     "lruRefreshRatio_": 0,
@@ -19,9 +19,8 @@
     "NavyBigHashSizePct": 0,
     "NavyBlockSize": 4096,
     "NavyParcelMemoryMB": 5760
-  }, 
-  "test_config":
-  {
+  },
+  "test_config": {
     "enableLookaside": true,
     "opRatePerSec_": 2500000,
     "generator": "replay",
@@ -31,9 +30,8 @@
     "populateItem": true,
     "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
     "traceFileName": "/nfs/memc_200m.tr.ant",
-    "replayGeneratorConfig":
-    {
-        "ampFactor": 1
+    "replayGeneratorConfig": {
+      "ampFactor": 1
     }
   }
 }
