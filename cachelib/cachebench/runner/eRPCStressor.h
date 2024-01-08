@@ -19,8 +19,7 @@
 #include <folly/Random.h>
 #include <folly/TokenBucket.h>
 #include <folly/system/ThreadName.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
+#include <signal.h>
 
 #include <atomic>
 #include <cstddef>
@@ -41,6 +40,7 @@
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
+#include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/GeneratorBase.h"
 
 namespace facebook {
@@ -49,12 +49,15 @@ namespace cachebench {
 
 constexpr uint32_t kNvmCacheWarmUpCheckRate = 1000;
 
+volatile sig_atomic_t ctrl_c_pressed = 0;
+void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
+
 // Implementation of stressor that uses a workload generator to stress an
-// instance of the cache.  All item's value in CacheStressor follows CacheValue
+// instance of the cache.  All item's value in eRPCStressor follows CacheValue
 // schema, which contains a few integers for sanity checks use. So it is invalid
 // to use item.getMemory and item.getSize APIs.
 template <typename Allocator>
-class CacheStressor : public Stressor {
+class eRPCStressor : public Stressor {
  public:
   using CacheT = Cache<Allocator>;
   using Key = typename CacheT::Key;
@@ -63,12 +66,9 @@ class CacheStressor : public Stressor {
   // @param cacheConfig   the config to instantiate the cache instance
   // @param config        stress test config
   // @param generator     workload  generator
-  CacheStressor(CacheConfig cacheConfig,
-                StressorConfig config,
-                std::unique_ptr<GeneratorBase>&& generator)
+  eRPCStressor(CacheConfig cacheConfig, StressorConfig config)
       : config_(std::move(config)),
         throughputStats_(config_.numThreads),
-        wg_(std::move(generator)),
         hardcodedString_(genHardcodedString()),
         endTime_{std::chrono::system_clock::time_point::max()} {
     maxAllocSize = cacheConfig.maxAllocSize;
@@ -87,7 +87,7 @@ class CacheStressor : public Stressor {
       struct CacheStressSyncObj : public CacheT::SyncObj {
         std::unique_lock<folly::SharedMutex> lock;
 
-        CacheStressSyncObj(CacheStressor& s, std::string itemKey)
+        CacheStressSyncObj(eRPCStressor& s, std::string itemKey)
             : lock{s.chainedItemAcquireUniqueLock(itemKey)} {}
       };
       movingSync = [this](typename CacheT::Item::Key key) {
@@ -101,14 +101,11 @@ class CacheStressor : public Stressor {
       // TimeStampTicker allows syncing the notion of time between the
       // cache and the workload generator based on timestamps in the trace.
       ticker_ = std::make_shared<TimeStampTicker>(
-          config.numThreads, cacheConfig.tickerSynchingSeconds,
-          [wg = wg_.get()](double elapsedSecs) {
-            wg->renderWindowStats(elapsedSecs, std::cout);
-          });
+          config.numThreads, cacheConfig.tickerSynchingSeconds, nullptr);
       cacheConfig.ticker = ticker_;
     }
     cacheConfig.nvmWriteBytesCallback =
-        std::bind(&CacheStressor<Allocator>::getNvmBytesWritten, this);
+        std::bind(&eRPCStressor<Allocator>::getNvmBytesWritten, this);
     try {
       cache_ = std::make_unique<CacheT>(
           cacheConfig, movingSync, cacheConfig.cacheDir, config_.touchValue);
@@ -133,9 +130,6 @@ class CacheStressor : public Stressor {
           config_.keyPoolDistribution.size(), cache_->numPools()));
     }
 
-    if (config_.checkConsistency) {
-      cache_->enableConsistencyCheck(wg_->getAllKeys());
-    }
     if (config_.opRatePerSec > 0) {
       // opRateBurstSize is default to opRatePerSec if not specified
       rateLimiter_ = std::make_unique<folly::BasicTokenBucket<>>(
@@ -145,7 +139,101 @@ class CacheStressor : public Stressor {
     }
   }
 
-  ~CacheStressor() override { finish(); }
+  ~eRPCStressor() override { finish(); }
+
+  static void req_handler(erpc::ReqHandle* req_handle, void* _context) {
+    auto* c = static_cast<ServerThreadContext*>(_context);
+    eRPCStressor* stressor = dynamic_cast<eRPCStressor*>(c->stressor);
+
+    // Check Cache health status.
+    if (stressor->cache_->getInconsistencyCount() >=
+            stressor->config_.maxInconsistencyCount ||
+        stressor->cache_->getInvalidDestructorCount() >=
+            stressor->config_.maxInvalidDestructorCount ||
+        stressor->cache_->isNvmCacheDisabled() || stressor->shouldTestStop()) {
+      std::terminate();
+    }
+
+    // Get request buffer.
+    const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
+    assert(req_msgbuf->get_data_size() == sizeof(req_t));
+    req_t req;
+    memcpy(&req, req_msgbuf->buf_, sizeof(req_t));
+
+    std::vector<size_t> sizes;
+    sizes.push_back(req.size);
+    Request request(req.key, sizes.begin(), sizes.end(), req.op, req.ttl,
+                    req.reqId, req.admFeatureM, req.value);
+
+    // Process request as per stressByDiscreteDistribution.
+    resp_t resp;
+    resp.result = OpResultType::kNop;
+    resp.data = nullptr;
+    resp.data_size = 0;
+    stressor->stressByDiscreteDistribution(request, *c, &resp);
+
+    // Use dynamic response based on the size of the data from Cache.
+    erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
+    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
+        sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
+
+    // Write a sequence to buffer.
+    memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size,
+           sizeof(size_t));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data,
+           resp.data_size);
+    c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
+  }
+
+  void server_thread(size_t thread_id) {
+    ServerThreadContext c;
+    c.thread_id_ = thread_id;
+    c.stressor = this;
+
+    // Pid.
+    std::mt19937_64 gen(folly::Random::rand64());
+    std::discrete_distribution<> opPoolDist(config_.opPoolDistribution.begin(),
+                                            config_.opPoolDistribution.end());
+    const auto pid = static_cast<PoolId>(opPoolDist(gen));
+    c.pid = pid;
+
+    // Throttle function.
+    const uint64_t opDelayBatch = config_.opDelayBatch;
+    const uint64_t opDelayNs = config_.opDelayNs;
+    const std::chrono::nanoseconds opDelay(opDelayNs);
+    const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
+    uint64_t opCounter = 0;
+    auto throttleFn = [&] {
+      if (needDelay && ++opCounter == opDelayBatch) {
+        opCounter = 0;
+        std::this_thread::sleep_for(opDelay);
+      }
+      // Limit the rate if specified.
+      limitRate();
+    };
+    c.throttleFn = throttleFn;
+
+    // Throughput stats from object.
+    c.stats = throughputStats_.at(thread_id);
+
+    // Start eRPC server on a unique port.
+    size_t port = kServerBasePort + thread_id;
+    std::string server_uri = kServerHostname + ":" + std::to_string(port);
+    erpc::Nexus nexus(server_uri, 0, kNumBgThreads);
+    nexus.register_req_func(kReqType, req_handler);
+    erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
+                                    static_cast<uint8_t>(thread_id), nullptr,
+                                    kPhyPort);
+    c.rpc_ = &rpc;
+
+    printf("Server starting on port %zu...\n", port);
+    while (true) {
+      rpc.run_event_loop(kAppEvLoopMs);
+      if (ctrl_c_pressed == 1)
+        break;
+    }
+  }
 
   // Start the stress test by spawning the worker threads and waiting for them
   // to finish the stress operations.
@@ -162,12 +250,13 @@ class CacheStressor : public Stressor {
       std::vector<std::thread> workers;
 
       for (uint64_t i = 0; i < config_.numThreads; ++i) {
-        workers.push_back(
-            std::thread([this, throughputStats = &throughputStats_.at(i),
-                         threadName = folly::sformat("cb_stressor_{}", i)]() {
+        workers.push_back(std::thread(
+            [this, throughputStats = &throughputStats_.at(i),
+             threadName = folly::sformat("cb_stressor_{}", i), i]() {
               folly::setThreadName(threadName);
-              stressByDiscreteDistribution(*throughputStats);
+              server_thread(i);
             }));
+        // erpc::bind_to_core(workers[i], 0, i);
       }
       for (auto& worker : workers) {
         worker.join();
@@ -195,16 +284,12 @@ class CacheStressor : public Stressor {
     if (stressWorker_.joinable()) {
       stressWorker_.join();
     }
-    wg_->markShutdown();
     cache_->clearCache(config_.maxInvalidDestructorCount);
   }
 
   // abort the stress run by indicating to the workload generator and
   // delegating to the base class abort() to stop the test.
-  void abort() override {
-    wg_->markShutdown();
-    Stressor::abort();
-  }
+  void abort() override { Stressor::abort(); }
 
   // obtain stats from the cache instance.
   Stats getCacheStats() const override { return cache_->getStats(); }
@@ -221,12 +306,14 @@ class CacheStressor : public Stressor {
 
   void renderWorkloadGeneratorStats(uint64_t elapsedTimeNs,
                                     std::ostream& out) const override {
-    wg_->renderStats(elapsedTimeNs, out);
+    // This should be done by the generator client itself.
+    // wg_->renderStats(elapsedTimeNs, out);
   }
 
   void renderWorkloadGeneratorStats(
       uint64_t elapsedTimeNs, folly::UserCounters& counters) const override {
-    wg_->renderStats(elapsedTimeNs, counters);
+    // This should be done by the generator client itself.
+    // wg_->renderStats(elapsedTimeNs, counters);
   }
 
   uint64_t getTestDurationNs() const override {
@@ -287,222 +374,191 @@ class CacheStressor : public Stressor {
   // Throughput and Hit/Miss rates are tracked here as well
   //
   // @param stats       Throughput stats
-  void stressByDiscreteDistribution(ThroughputStats& stats) {
-    std::mt19937_64 gen(folly::Random::rand64());
-    std::discrete_distribution<> opPoolDist(config_.opPoolDistribution.begin(),
-                                            config_.opPoolDistribution.end());
-    const uint64_t opDelayBatch = config_.opDelayBatch;
-    const uint64_t opDelayNs = config_.opDelayNs;
-    const std::chrono::nanoseconds opDelay(opDelayNs);
-
-    const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
-    uint64_t opCounter = 0;
-    auto throttleFn = [&] {
-      if (needDelay && ++opCounter == opDelayBatch) {
-        opCounter = 0;
-        std::this_thread::sleep_for(opDelay);
-      }
-      // Limit the rate if specified.
-      limitRate();
-    };
-
-    std::optional<uint64_t> lastRequestId = std::nullopt;
-    for (uint64_t i = 0;
-         i < config_.numOps &&
-         cache_->getInconsistencyCount() < config_.maxInconsistencyCount &&
-         cache_->getInvalidDestructorCount() <
-             config_.maxInvalidDestructorCount &&
-         !cache_->isNvmCacheDisabled() && !shouldTestStop();
-         ++i) {
-      try {
-        // at the end of every operation, throttle per the config.
-        SCOPE_EXIT { throttleFn(); };
-          // detect refcount leaks when run in  debug mode.
+  void stressByDiscreteDistribution(const Request& req,
+                                    ServerThreadContext& c,
+                                    resp_t* resp) {
+    try {
+      auto& stats = c.stats;
+      auto pid = c.pid;
+      // at the end of every operation, throttle per the config.
+      SCOPE_EXIT { c.throttleFn(); };
+        // detect refcount leaks when run in  debug mode.
 #ifndef NDEBUG
-        auto checkCnt = [](int cnt) {
-          if (cnt != 0) {
-            throw std::runtime_error(folly::sformat("Refcount leak {}", cnt));
-          }
-        };
-        checkCnt(cache_->getHandleCountForThread());
-        SCOPE_EXIT { checkCnt(cache_->getHandleCountForThread()); };
+      auto checkCnt = [](int cnt) {
+        if (cnt != 0) {
+          throw std::runtime_error(folly::sformat("Refcount leak {}", cnt));
+        }
+      };
+      checkCnt(cache_->getHandleCountForThread());
+      SCOPE_EXIT { checkCnt(cache_->getHandleCountForThread()); };
 #endif
-        ++stats.ops;
+      ++stats.ops;
 
-        const auto pid = static_cast<PoolId>(opPoolDist(gen));
-        const Request& req(getReq(pid, gen, lastRequestId));
+      if (*(req.sizeBegin) > 8 && !useEvictionController) {
+        *(req.sizeBegin) -= 8;
+      }
+      if (cacheType == "TinyLFU") {
+        *(req.sizeBegin) += 24;
+      }
+      if (cacheType == "S3FIFO") {
+        *(req.sizeBegin) += 8;
+      }
 
-        if (*(req.sizeBegin) > 8 && !useEvictionController) {
-          *(req.sizeBegin) -= 8;
-        }
-        if (cacheType == "TinyLFU") {
-          *(req.sizeBegin) += 24;
-        }
-        if (cacheType == "S3FIFO") {
-          *(req.sizeBegin) += 8;
-        }
-
-        // filter size larger than 4mb
-        if (*(req.sizeBegin) >= maxAllocSize) {
-          lastRequestId = req.requestId;
-          if (req.requestId) {
-            // req might be deleted after calling notifyResult()
-            wg_->notifyResult(*req.requestId, OpResultType::kGetMiss);
-          }
-          continue;
-        }
-
-        OpType op = req.getOp();
-        const std::string* key = &(req.key);
-        std::string oneHitKey;
-        if (op == OpType::kLoneGet || op == OpType::kLoneSet) {
-          oneHitKey = Request::getUniqueKey();
-          key = &oneHitKey;
-        }
-        if (op == OpType::kDel) {
-          op = OpType::kGet;
-        }
-        OpResultType result(OpResultType::kNop);
-        util::LatencyTracker tracker =
-            util::LatencyTracker(cache_->cacheRequestLatency_);
-        switch (op) {
-        case OpType::kLoneSet:
-        case OpType::kSet: {
-          if (config_.onlySetIfMiss) {
-            auto it = cache_->find(*key);
-            if (it != nullptr) {
-              continue;
-            }
-          }
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
-                          req.nextTime, req.admFeatureMap, req.itemValue);
-
-          break;
-        }
-        case OpType::kLoneGet:
-        case OpType::kGet: {
-          ++stats.get;
-          auto slock = chainedItemAcquireSharedLock(*key);
-          auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
-
-          if (ticker_) {
-            ticker_->updateTimeStamp(req.timestamp);
-          }
-          // TODO currently pure lookaside, we should
-          // add a distribution over sequences of requests/access patterns
-          // e.g. get-no-set and set-no-get
-          cache_->recordAccess(*key);
-          auto it = cache_->find(*key);
-          if (it == nullptr) {
-            ++stats.getMiss;
-            result = OpResultType::kGetMiss;
-
-            if (config_.enableLookaside) {
-              // allocate and insert on miss
-              // upgrade access privledges, (lock_upgrade is not
-              // appropriate here)
-              slock = {};
-              xlock = chainedItemAcquireUniqueLock(*key);
-              setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
-                     req.nextTime, req.admFeatureMap, req.itemValue);
-            }
-          } //** else if (it->get_is_reinserted()) {
-            // from NVM cache
-            //** result = OpResultType::kGetMiss;
-          //** }
-          else {
-#ifdef TRUE_TTA
-            it->next_timestamp = req.nextTime;
-#endif
-            result = OpResultType::kGetHit;
-          }
-          break;
-        }
-        case OpType::kDel: {
-          ++stats.del;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          auto res = cache_->remove(*key);
-          if (res == CacheT::RemoveRes::kNotFoundInRam) {
-            ++stats.delNotFound;
-          }
-          break;
-        }
-        case OpType::kAddChained: {
-          ++stats.get;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          auto it = cache_->findToWrite(*key);
-          if (!it) {
-            ++stats.getMiss;
-
-            ++stats.set;
-            it = cache_->allocate(pid, *key, *(req.sizeBegin), req.ttlSecs);
-            if (!it) {
-              ++stats.setFailure;
-              break;
-            }
-            populateItem(it);
-            cache_->insertOrReplace(it);
-          }
-          XDCHECK(req.sizeBegin + 1 != req.sizeEnd);
-          bool chainSuccessful = false;
-          for (auto j = req.sizeBegin + 1; j != req.sizeEnd; j++) {
-            ++stats.addChained;
-
-            const auto size = *j;
-            auto child = cache_->allocateChainedItem(it, size);
-            if (!child) {
-              ++stats.addChainedFailure;
-              continue;
-            }
-            chainSuccessful = true;
-            populateItem(child);
-            cache_->addChainedItem(it, std::move(child));
-          }
-          if (chainSuccessful && cache_->consistencyCheckEnabled()) {
-            cache_->trackChainChecksum(it);
-          }
-          break;
-        }
-        case OpType::kUpdate: {
-          ++stats.get;
-          ++stats.update;
-          auto lock = chainedItemAcquireUniqueLock(*key);
-          if (ticker_) {
-            ticker_->updateTimeStamp(req.timestamp);
-          }
-          auto it = cache_->findToWrite(*key);
-          if (it == nullptr) {
-            ++stats.getMiss;
-            ++stats.updateMiss;
-            break;
-          }
-          cache_->updateItemRecordVersion(it);
-          break;
-        }
-        case OpType::kCouldExist: {
-          ++stats.couldExistOp;
-          if (!cache_->couldExist(*key)) {
-            ++stats.couldExistOpFalse;
-          }
-          break;
-        }
-        default:
-          throw std::runtime_error(
-              folly::sformat("invalid operation generated: {}", (int)op));
-          break;
-        }
-
-        lastRequestId = req.requestId;
+      // filter size larger than 4mb
+      if (*(req.sizeBegin) >= maxAllocSize) {
+        // lastRequestId = req.requestId;
         if (req.requestId) {
           // req might be deleted after calling notifyResult()
-          wg_->notifyResult(*req.requestId, result);
+          resp->result = OpResultType::kGetMiss;
         }
-      } catch (const cachebench::EndOfTrace& ex) {
+        return;
+      }
+
+      OpType op = req.getOp();
+      const std::string* key = &(req.key);
+      std::string oneHitKey;
+      if (op == OpType::kLoneGet || op == OpType::kLoneSet) {
+        oneHitKey = Request::getUniqueKey();
+        key = &oneHitKey;
+      }
+      if (op == OpType::kDel) {
+        op = OpType::kGet;
+      }
+
+      util::LatencyTracker tracker =
+          util::LatencyTracker(cache_->cacheRequestLatency_);
+      switch (op) {
+      case OpType::kLoneSet:
+      case OpType::kSet: {
+        if (config_.onlySetIfMiss) {
+          auto it = cache_->find(*key);
+          if (it != nullptr) {
+            return;
+          }
+        }
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
+                              req.nextTime, req.admFeatureMap, req.itemValue);
+
         break;
       }
+      case OpType::kLoneGet:
+      case OpType::kGet: {
+        ++stats.get;
+        auto slock = chainedItemAcquireSharedLock(*key);
+        auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
+
+        if (ticker_) {
+          ticker_->updateTimeStamp(req.timestamp);
+        }
+        // TODO currently pure lookaside, we should
+        // add a distribution over sequences of requests/access patterns
+        // e.g. get-no-set and set-no-get
+        cache_->recordAccess(*key);
+        auto it = cache_->find(*key);
+        if (it == nullptr) {
+          ++stats.getMiss;
+          resp->result = OpResultType::kGetMiss;
+
+          if (config_.enableLookaside) {
+            // allocate and insert on miss
+            // upgrade access privledges, (lock_upgrade is not
+            // appropriate here)
+            slock = {};
+            xlock = chainedItemAcquireUniqueLock(*key);
+            setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
+                   req.admFeatureMap, req.itemValue);
+          }
+        } //** else if (it->get_is_reinserted()) {
+          // from NVM cache
+          //** result = OpResultType::kGetMiss;
+        //** }
+        else {
+#ifdef TRUE_TTA
+          it->next_timestamp = req.nextTime;
+#endif
+          resp->result = OpResultType::kGetHit;
+          resp->data = const_cast<void*>(it->getMemory());
+          resp->data_size = it->getSize();
+        }
+        break;
+      }
+      case OpType::kDel: {
+        ++stats.del;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        auto res = cache_->remove(*key);
+        if (res == CacheT::RemoveRes::kNotFoundInRam) {
+          ++stats.delNotFound;
+        }
+        break;
+      }
+      case OpType::kAddChained: {
+        ++stats.get;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        auto it = cache_->findToWrite(*key);
+        if (!it) {
+          ++stats.getMiss;
+
+          ++stats.set;
+          it = cache_->allocate(pid, *key, *(req.sizeBegin), req.ttlSecs);
+          if (!it) {
+            ++stats.setFailure;
+            break;
+          }
+          populateItem(it);
+          cache_->insertOrReplace(it);
+        }
+        XDCHECK(req.sizeBegin + 1 != req.sizeEnd);
+        bool chainSuccessful = false;
+        for (auto j = req.sizeBegin + 1; j != req.sizeEnd; j++) {
+          ++stats.addChained;
+
+          const auto size = *j;
+          auto child = cache_->allocateChainedItem(it, size);
+          if (!child) {
+            ++stats.addChainedFailure;
+            continue;
+          }
+          chainSuccessful = true;
+          populateItem(child);
+          cache_->addChainedItem(it, std::move(child));
+        }
+        if (chainSuccessful && cache_->consistencyCheckEnabled()) {
+          cache_->trackChainChecksum(it);
+        }
+        break;
+      }
+      case OpType::kUpdate: {
+        ++stats.get;
+        ++stats.update;
+        auto lock = chainedItemAcquireUniqueLock(*key);
+        if (ticker_) {
+          ticker_->updateTimeStamp(req.timestamp);
+        }
+        auto it = cache_->findToWrite(*key);
+        if (it == nullptr) {
+          ++stats.getMiss;
+          ++stats.updateMiss;
+          break;
+        }
+        cache_->updateItemRecordVersion(it);
+        break;
+      }
+      case OpType::kCouldExist: {
+        ++stats.couldExistOp;
+        if (!cache_->couldExist(*key)) {
+          ++stats.couldExistOpFalse;
+        }
+        break;
+      }
+      default:
+        throw std::runtime_error(
+            folly::sformat("invalid operation generated: {}", (int)op));
+        break;
+      }
+    } catch (const cachebench::EndOfTrace& ex) {
+      std::terminate();
     }
-    wg_->markFinish();
   }
 
   // inserts key into the cache if the admission policy also indicates the
@@ -573,11 +629,15 @@ class CacheStressor : public Stressor {
   //                        generator. This is used to provide continuity by
   //                        some generator implementations.
 
+  // TODO: This entire function should be on server-side when processing each
+  // request.
   const Request& getReq(const PoolId& pid,
                         std::mt19937_64& gen,
                         std::optional<uint64_t>& lastRequestId) {
     while (true) {
-      const Request& req(wg_->getReq(pid, gen, lastRequestId));
+      // const Request& req(wg_->getReq(pid, gen, lastRequestId));
+      std::vector<size_t> reqVec(5);
+      const Request req("hello", reqVec.begin(), reqVec.end());
       if (config_.checkConsistency && cache_->isInvalidKey(req.key)) {
         continue;
       }
@@ -607,7 +667,8 @@ class CacheStressor : public Stressor {
       return;
     }
     if (cache_->hasNvmCacheWarmedUp()) {
-      wg_->setNvmCacheWarmedUp(requestTimestamp);
+      // wg_->setNvmCacheWarmedUp(requestTimestamp); // this is a do nothing for
+      // KVReplayGenerator
       XLOG(INFO) << "NVM cache has been warmed up";
       hasNvmCacheWarmedUp_ = true;
     }
@@ -618,8 +679,6 @@ class CacheStressor : public Stressor {
   std::string cacheType;
 
   std::vector<ThroughputStats> throughputStats_; // thread local stats
-
-  std::unique_ptr<GeneratorBase> wg_; // workload generator
 
   // locks when using chained item and moving.
   std::array<folly::SharedMutex, 1024> locks_;
