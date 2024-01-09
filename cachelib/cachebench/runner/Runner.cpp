@@ -40,8 +40,8 @@ bool Runner::run(std::chrono::seconds progressInterval,
       auto generator = Stressor::makeGenerator(stressor_config_);
     } else {
       fprintf(stderr,
-              "The --client flag cannot be used when configured with "
-              "eRPCStressor. Exiting...\n");
+              "The --client flag can only be used when configured with "
+              "eRPCStressor and eRPCGenerator. Exiting...\n");
       exit(2);
     }
   }
