@@ -149,8 +149,11 @@ class eRPCGenerator : public ReplayGeneratorBase {
     memcpy(c->req_msgbuf.buf_, reinterpret_cast<char*>(&erpc_meta),
            sizeof(req_meta_t));
     memcpy(c->req_msgbuf.buf_ + sizeof(req_meta_t),
-           reinterpret_cast<char*>(&erpc_data),
-           erpc_meta.key_size + erpc_meta.value_size);
+           req.key.c_str(),
+           erpc_meta.key_size);
+    memcpy(c->req_msgbuf.buf_ + sizeof(req_meta_t) + erpc_meta.key_size,
+           req.itemValue.c_str(),
+           erpc_meta.value_size);
 
     // Prepare response buffer.
     c->resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
