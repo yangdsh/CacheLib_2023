@@ -44,6 +44,8 @@ bool Runner::run(std::chrono::seconds progressInterval,
               "eRPCStressor and eRPCGenerator. Exiting...\n");
       exit(2);
     }
+  } else {
+    stressor_->start();
   }
 
   progressInterval = std::chrono::seconds(1);
