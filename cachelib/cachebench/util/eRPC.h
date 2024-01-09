@@ -28,7 +28,7 @@ static constexpr size_t kNumBgThreads = 0;
 struct req_meta_t {
   OpType op;
   uint32_t ttl;
-  uint64_t reqId;
+  std::optional<uint64_t> reqId;
   size_t key_size;
   size_t value_size;
 };

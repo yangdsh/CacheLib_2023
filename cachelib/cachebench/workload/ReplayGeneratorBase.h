@@ -36,7 +36,37 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
+uint64_t cnt = 0;
 constexpr size_t kIfstreamBufferSize = 1L << 14;
+thread_local int keySuffixLocal = 100;
+thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
+
+struct ReqWrapper {
+  ReqWrapper() = default;
+
+  ReqWrapper(const ReqWrapper& other)
+      : key_(other.key_),
+        sizes_(other.sizes_),
+        req_(key_,
+             sizes_.begin(),
+             sizes_.end(),
+             reinterpret_cast<uint64_t>(this),
+             other.req_),
+        repeats_(other.repeats_) {}
+
+  // current outstanding key
+  std::string key_;
+  std::vector<size_t> sizes_{1};
+  // current outstanding req object
+  // Use 'this' as the request ID, so that this object can be
+  // identified on completion (i.e., notifyResult call)
+  Request req_{key_, sizes_.begin(), sizes_.end(), OpType::kGet,
+               reinterpret_cast<uint64_t>(this)};
+
+  // number of times to issue the current req object
+  // before fetching a new line from the trace
+  uint32_t repeats_{0};
+};
 
 // ColumnInfo is to pass the information required to parse the trace
 // to map the column to the replayer-specific field ID.
@@ -314,7 +344,8 @@ class ReplayGeneratorBase : public GeneratorBase {
   }
 
   void calculateClassSizes() {
-    for (uint64_t size = config_.minAllocSize; size < config_.maxAllocSize; size *= config_.allocFactor) {
+    for (uint64_t size = config_.minAllocSize; size < config_.maxAllocSize;
+         size *= config_.allocFactor) {
       acSizes_.push_back(size);
     }
   }

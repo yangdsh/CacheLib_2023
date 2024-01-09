@@ -33,33 +33,6 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
-struct ReqWrapper {
-  ReqWrapper() = default;
-
-  ReqWrapper(const ReqWrapper& other)
-      : key_(other.key_),
-        sizes_(other.sizes_),
-        req_(key_,
-             sizes_.begin(),
-             sizes_.end(),
-             reinterpret_cast<uint64_t>(this),
-             other.req_),
-        repeats_(other.repeats_) {}
-
-  // current outstanding key
-  std::string key_;
-  std::vector<size_t> sizes_{1};
-  // current outstanding req object
-  // Use 'this' as the request ID, so that this object can be
-  // identified on completion (i.e., notifyResult call)
-  Request req_{key_, sizes_.begin(), sizes_.end(), OpType::kGet,
-               reinterpret_cast<uint64_t>(this)};
-
-  // number of times to issue the current req object
-  // before fetching a new line from the trace
-  uint32_t repeats_{0};
-};
-
 // KVReplayGenerator generates the cachelib requests based the trace data
 // read from the given trace file(s).
 // KVReplayGenerator supports amplifying the key population by appending
@@ -315,8 +288,6 @@ inline std::unique_ptr<ReqWrapper> KVReplayGenerator::getReqInternal() {
   return reqWrapper;
 }
 
-uint64_t cnt = 0;
-
 inline void KVReplayGenerator::genRequests() {
   while (!shouldShutdown()) {
     std::unique_ptr<ReqWrapper> reqWrapper;
@@ -354,9 +325,6 @@ inline void KVReplayGenerator::genRequests() {
 
   setEOF();
 }
-
-thread_local int keySuffixLocal = 100;
-thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
 
 const Request& KVReplayGenerator::getReq(uint8_t,
                                          std::mt19937_64&,

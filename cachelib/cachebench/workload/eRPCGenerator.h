@@ -27,7 +27,6 @@
 #include "cachelib/cachebench/cache/Cache.h"
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
-#include "cachelib/cachebench/util/Request.h"
 #include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/ReplayGeneratorBase.h"
 
@@ -37,33 +36,6 @@ void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
 namespace facebook {
 namespace cachelib {
 namespace cachebench {
-
-struct ReqWrapper {
-  ReqWrapper() = default;
-
-  ReqWrapper(const ReqWrapper& other)
-      : key_(other.key_),
-        sizes_(other.sizes_),
-        req_(key_,
-             sizes_.begin(),
-             sizes_.end(),
-             reinterpret_cast<uint64_t>(this),
-             other.req_),
-        repeats_(other.repeats_) {}
-
-  // current outstanding key
-  std::string key_;
-  std::vector<size_t> sizes_{1};
-  // current outstanding req object
-  // Use 'this' as the request ID, so that this object can be
-  // identified on completion (i.e., notifyResult call)
-  Request req_{key_, sizes_.begin(), sizes_.end(), OpType::kGet,
-               reinterpret_cast<uint64_t>(this)};
-
-  // number of times to issue the current req object
-  // before fetching a new line from the trace
-  uint32_t repeats_{0};
-};
 
 // eRPCGenerator generates the cachelib requests based the trace data
 // read from the given trace file(s).
@@ -119,7 +91,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // Start the client threads, one client per each port on the server.
     signal(SIGINT, ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_);
-    for (size_t i = 0; i < numShards_;; i++) {
+    for (size_t i = 0; i < numShards_; i++) {
       send_threads[i] = std::thread(thread_func, i);
     }
     for (auto& send_thread : send_threads)
@@ -158,7 +130,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
         *(req.sizeBegin) + sizeof(OpResultType) + sizeof(size_t));
 
     // Send the request.
-    c->rpc_->enqueue_request(c->session_num, kReqType, &req_msgbuf,
+    c->rpc_->enqueue_request(c->session_num, kReqType, &c->req_msgbuf,
                              &c->resp_msgbuf, cont_func, nullptr);
   }
 
@@ -198,7 +170,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
         kClientHostname + ":" + std::to_string(kServerBasePort + c.thread_id_);
     erpc::Nexus nexus(client_uri);
 
-    erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void*>(&c),
+    erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
                                     static_cast<uint8_t>(thread_id),
                                     basic_sm_handler, kPhyPort);
     rpc.retry_connect_on_invalid_rpc_id_ = true;
@@ -419,8 +391,6 @@ inline std::unique_ptr<ReqWrapper> eRPCGenerator::getReqInternal() {
   return reqWrapper;
 }
 
-uint64_t cnt = 0;
-
 inline void eRPCGenerator::genRequests() {
   while (!shouldShutdown()) {
     std::unique_ptr<ReqWrapper> reqWrapper;
@@ -458,9 +428,6 @@ inline void eRPCGenerator::genRequests() {
 
   setEOF();
 }
-
-thread_local int keySuffixLocal = 100;
-thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
 
 const Request& eRPCGenerator::getReq(uint8_t,
                                      std::mt19937_64&,
