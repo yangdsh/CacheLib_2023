@@ -27,7 +27,6 @@
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
-#include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/ReplayGeneratorBase.h"
 
 namespace facebook {

@@ -28,6 +28,7 @@
 #include "cachelib/cachebench/util/Exceptions.h"
 #include "cachelib/cachebench/util/Parallel.h"
 #include "cachelib/cachebench/util/Request.h"
+#include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/ReplayGeneratorBase.h"
 
 volatile sig_atomic_t ctrl_c_pressed = 0;
