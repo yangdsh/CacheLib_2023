@@ -22,6 +22,9 @@ sudo mount -t hugetlbfs nodev /mnt/huge
 if [ ! -d "cachelib/cachebench/eRPC" ] ; then
     git clone https://github.com/oleggolev/eRPC "cachelib/cachebench/eRPC"
 fi
+cd ./cachelib/cachebench/eRPC
+cmake . -DPERF=ON -DTRANSPORT=infiniband -DROCE=on; make -j; sudo ctest
+cd ../../..
 
 NAME=cachelib
 
