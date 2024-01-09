@@ -153,6 +153,7 @@ class eRPCStressor : public Stressor {
         stressor->cache_->isNvmCacheDisabled() || stressor->shouldTestStop()) {
       std::terminate();
     }
+    printf("hello\n");
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
