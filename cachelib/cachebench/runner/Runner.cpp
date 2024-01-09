@@ -27,7 +27,7 @@ namespace cachebench {
 Runner::Runner(const CacheBenchConfig& config)
     : stressor_{Stressor::makeStressor(config.getCacheConfig(),
                                        config.getStressorConfig())} {
-  StressorConfig stressor_config_ = config.getStressorConfig();
+  stressor_config_ = config.getStressorConfig();
 }
 
 bool Runner::run(std::chrono::seconds progressInterval,
@@ -35,17 +35,15 @@ bool Runner::run(std::chrono::seconds progressInterval,
   ProgressTracker tracker{*stressor_, progressStatsFile};
 
   if (FLAGS_client) {
-    if (stressor_config_.generator != "eRPC" ||
-        stressor_config_.name != "eRPC") {
+    if (stressor_config_.generator == "eRPC" &&
+        stressor_config_.name == "eRPC") {
+      auto generator = Stressor::makeGenerator(stressor_config_);
+    } else {
       fprintf(stderr,
-              "The --client flag must only be used when configured with "
+              "The --client flag cannot be used when configured with "
               "eRPCStressor. Exiting...\n");
       exit(2);
-    } else {
-      auto generator = Stressor::makeGenerator(stressor_config_);
     }
-  } else {
-    stressor_->start();
   }
 
   progressInterval = std::chrono::seconds(1);
