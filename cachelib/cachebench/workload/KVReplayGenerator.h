@@ -355,7 +355,6 @@ inline void KVReplayGenerator::genRequests() {
   setEOF();
 }
 
-constexpr size_t kIfstreamBufferSize = 1L << 14;
 thread_local int keySuffixLocal = 100;
 thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
 
