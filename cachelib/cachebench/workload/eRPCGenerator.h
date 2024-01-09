@@ -37,6 +37,33 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
+struct eRPCReqWrapper {
+  eRPCReqWrapper() = default;
+
+  eRPCReqWrapper(const eRPCReqWrapper& other)
+      : key_(other.key_),
+        sizes_(other.sizes_),
+        req_(key_,
+             sizes_.begin(),
+             sizes_.end(),
+             reinterpret_cast<uint64_t>(this),
+             other.req_),
+        repeats_(other.repeats_) {}
+
+  // current outstanding key
+  std::string key_;
+  std::vector<size_t> sizes_{1};
+  // current outstanding req object
+  // Use 'this' as the request ID, so that this object can be
+  // identified on completion (i.e., notifyResult call)
+  Request req_{key_, sizes_.begin(), sizes_.end(), OpType::kGet,
+               reinterpret_cast<uint64_t>(this)};
+
+  // number of times to issue the current req object
+  // before fetching a new line from the trace
+  uint32_t repeats_{0};
+};
+
 // eRPCGenerator generates the cachelib requests based the trace data
 // read from the given trace file(s).
 // eRPCGenerator supports amplifying the key population by appending
@@ -212,8 +239,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
 
   void markFinish() override { getStressorCtx().markFinish(); }
 
-  // Parse the request from the trace line and set the ReqWrapper
-  bool parseRequest(const std::string& line, std::unique_ptr<ReqWrapper>& req);
+  // Parse the request from the trace line and set the eRPCReqWrapper
+  bool parseRequest(const std::string& line,
+                    std::unique_ptr<eRPCReqWrapper>& req);
 
   // for unit test
   bool setHeaderRow(const std::string& header) {
@@ -228,7 +256,8 @@ class eRPCGenerator : public ReplayGeneratorBase {
   static constexpr uint64_t checkIntervalUs_ = 1;
   static constexpr size_t kMaxRequests = 10000;
 
-  using ReqQueue = folly::ProducerConsumerQueue<std::unique_ptr<ReqWrapper>>;
+  using ReqQueue =
+      folly::ProducerConsumerQueue<std::unique_ptr<eRPCReqWrapper>>;
 
   // StressorCtx keeps track of the state including the submission queues
   // per stressor thread. Since there is only one request generator thread,
@@ -246,15 +275,15 @@ class eRPCGenerator : public ReplayGeneratorBase {
     void markFinish() { finished_.store(true, std::memory_order_relaxed); }
 
     uint32_t id_{0};
-    std::queue<std::unique_ptr<ReqWrapper>> resubmitQueue_;
+    std::queue<std::unique_ptr<eRPCReqWrapper>> resubmitQueue_;
     folly::cacheline_aligned<ReqQueue> reqQueue_;
     // Thread that finish its operations mark it here, so we will skip
     // further request on its shard
     std::atomic<bool> finished_{false};
   };
 
-  // Read next trace line from TraceFileStream and fill ReqWrapper
-  std::unique_ptr<ReqWrapper> getReqInternal();
+  // Read next trace line from TraceFileStream and fill eRPCReqWrapper
+  std::unique_ptr<eRPCReqWrapper> getReqInternal();
 
   // Used to assign stressorIdx_
   std::atomic<uint32_t> incrementalIdx_{0};
@@ -298,7 +327,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
 };
 
 inline bool eRPCGenerator::parseRequest(const std::string& line,
-                                        std::unique_ptr<ReqWrapper>& req) {
+                                        std::unique_ptr<eRPCReqWrapper>& req) {
   if (!traceStream_.setNextLine(line)) {
     return false;
   }
@@ -373,8 +402,8 @@ inline bool eRPCGenerator::parseRequest(const std::string& line,
   return true;
 }
 
-inline std::unique_ptr<ReqWrapper> eRPCGenerator::getReqInternal() {
-  auto reqWrapper = std::make_unique<ReqWrapper>();
+inline std::unique_ptr<eRPCReqWrapper> eRPCGenerator::getReqInternal() {
+  auto reqWrapper = std::make_unique<eRPCReqWrapper>();
   do {
     std::string line;
     traceStream_.getline(line); // can throw
@@ -391,21 +420,23 @@ inline std::unique_ptr<ReqWrapper> eRPCGenerator::getReqInternal() {
   return reqWrapper;
 }
 
+uint64_t eRPCcnt = 0;
+
 inline void eRPCGenerator::genRequests() {
   while (!shouldShutdown()) {
-    std::unique_ptr<ReqWrapper> reqWrapper;
+    std::unique_ptr<eRPCReqWrapper> reqWrapper;
     try {
       reqWrapper = getReqInternal();
     } catch (const EndOfTrace& e) {
       break;
     }
 
-    std::unique_ptr<ReqWrapper> req;
+    std::unique_ptr<eRPCReqWrapper> req;
     req.swap(reqWrapper);
     auto shardId =
         getShard(req->req_.key); //, req->key_.size() + req->sizes_[0]);
     if (ampFactor_ == 42) {
-      shardId = ++cnt % config_.numThreads;
+      shardId = ++eRPCcnt % config_.numThreads;
     }
     while (1) {
       auto& stressorCtx = getStressorCtx(shardId);
@@ -429,31 +460,34 @@ inline void eRPCGenerator::genRequests() {
   setEOF();
 }
 
+thread_local int eRPCkeySuffixLocal = 100;
+thread_local std::unique_ptr<eRPCReqWrapper> curERPCReqWrapper;
+
 const Request& eRPCGenerator::getReq(uint8_t,
                                      std::mt19937_64&,
                                      std::optional<uint64_t>) {
-  std::unique_ptr<ReqWrapper> reqWrapper;
+  std::unique_ptr<eRPCReqWrapper> reqWrapper;
   auto& stressorCtx = getStressorCtx();
   auto& reqQ = *stressorCtx.reqQueue_;
   auto& resubmitQueue = stressorCtx.resubmitQueue_;
 
-  if (ampFactor_ > 1 && keySuffixLocal < ampFactor_) {
+  if (ampFactor_ > 1 && eRPCkeySuffixLocal < ampFactor_) {
     if (!resubmitQueue.empty()) {
       reqWrapper.swap(resubmitQueue.front());
       resubmitQueue.pop();
     } else {
-      keySuffixLocal += 1;
-      // Use a copy of ReqWrapper except for the last one
-      reqWrapper = std::make_unique<ReqWrapper>(*curReqWrapper);
+      eRPCkeySuffixLocal += 1;
+      // Use a copy of eRPCReqWrapper except for the last one
+      reqWrapper = std::make_unique<eRPCReqWrapper>(*curERPCReqWrapper);
 
       if (reqWrapper->req_.key.size() > 10) {
         // trunkcate the key
         size_t newSize = std::max<size_t>(reqWrapper->req_.key.size() - 4, 10u);
         reqWrapper->req_.key.resize(newSize, '0');
       }
-      reqWrapper->req_.key.append(folly::sformat("{:04d}", keySuffixLocal));
+      reqWrapper->req_.key.append(folly::sformat("{:04d}", eRPCkeySuffixLocal));
     }
-    ReqWrapper* reqPtr = reqWrapper.release();
+    eRPCReqWrapper* reqPtr = reqWrapper.release();
     return reqPtr->req_;
   }
 
@@ -470,19 +504,19 @@ const Request& eRPCGenerator::getReq(uint8_t,
     reqWrapper.swap(resubmitQueue.front());
     resubmitQueue.pop();
   } else if (ampFactor_ > 1) {
-    keySuffixLocal = 1;
-    curReqWrapper.reset();
-    curReqWrapper = std::make_unique<ReqWrapper>(*reqWrapper);
+    eRPCkeySuffixLocal = 1;
+    curERPCReqWrapper.reset();
+    curERPCReqWrapper = std::make_unique<eRPCReqWrapper>(*reqWrapper);
   }
-  ReqWrapper* reqPtr = reqWrapper.release();
+  eRPCReqWrapper* reqPtr = reqWrapper.release();
   return reqPtr->req_;
 }
 
 void eRPCGenerator::notifyResult(uint64_t requestId, OpResultType) {
-  // requestId should point to the ReqWrapper object. The ownership is taken
+  // requestId should point to the eRPCReqWrapper object. The ownership is taken
   // here to do the clean-up properly if not resubmitted
-  std::unique_ptr<ReqWrapper> reqWrapper(
-      reinterpret_cast<ReqWrapper*>(requestId));
+  std::unique_ptr<eRPCReqWrapper> reqWrapper(
+      reinterpret_cast<eRPCReqWrapper*>(requestId));
   XCHECK_GT(reqWrapper->repeats_, 0u);
   if (--reqWrapper->repeats_ == 0) {
     return;
