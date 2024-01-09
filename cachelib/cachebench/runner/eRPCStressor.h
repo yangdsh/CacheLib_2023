@@ -186,6 +186,11 @@ class eRPCStressor : public Stressor {
     // to us by the cache. However, on the client size, we also expect `size`
     // number of bytes and include that in the request as req.sizeBegin. Hence
     // if req.sizeBegin < resp.data_size, then only return req.sizeBegin bytes.
+    // resp.data_size is zero if not GET. If GET, limit to what the user
+    // expects.
+    if (*(req.sizeBegin) < resp.data_size) {
+      resp.data_size = *(req.sizeBegin);
+    }
 
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
