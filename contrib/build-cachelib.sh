@@ -20,7 +20,7 @@ sudo mount -t hugetlbfs nodev /mnt/huge
 
 # Pull down the eRPC library.
 if [ ! -d "cachelib/cachebench/eRPC" ] ; then
-    git clone https://github.com/oleggolev/eRPC "cachelib/cachebench/"
+    git clone https://github.com/oleggolev/eRPC "cachelib/cachebench/eRPC"
 fi
 
 NAME=cachelib
