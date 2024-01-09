@@ -17,7 +17,6 @@
 #include "cachelib/cachebench/runner/Runner.h"
 
 #include "cachelib/cachebench/runner/Stressor.h"
-#include "cachelib/cachebench/runner/eRPCStressor.h"
 
 DECLARE_bool(client);
 
