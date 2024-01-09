@@ -60,6 +60,8 @@ class Runner {
  private:
   // instance of the stressor.
   std::unique_ptr<Stressor> stressor_;
+  // the config file info
+  CacheBenchConfig& config_;
 };
 } // namespace cachebench
 } // namespace cachelib

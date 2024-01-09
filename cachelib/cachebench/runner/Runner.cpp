@@ -17,6 +17,7 @@
 #include "cachelib/cachebench/runner/Runner.h"
 
 #include "cachelib/cachebench/runner/Stressor.h"
+#include "cachelib/cachebench/runner/eRPCStressor.h"
 
 DECLARE_bool(client);
 
@@ -25,21 +26,22 @@ namespace cachelib {
 namespace cachebench {
 Runner::Runner(const CacheBenchConfig& config)
     : stressor_{Stressor::makeStressor(config.getCacheConfig(),
-                                       config.getStressorConfig())} {}
+                                       config.getStressorConfig())},
+      config_(std::move(config)) {}
 
 bool Runner::run(std::chrono::seconds progressInterval,
                  const std::string& progressStatsFile) {
   ProgressTracker tracker{*stressor_, progressStatsFile};
+  StressorConfig& stressor_config = config_.getStressorConfig();
 
   if (FLAGS_client) {
-    eRPCStressor* erpc_stressor = dynamic_cast<eRPCStressor*>(stressor_.get());
-    if (erpc_stressor == NULL) {
+    if (stressor_config.generator != "eRPC" || stressor_config.name != "eRPC") {
       fprintf(stderr,
               "The --client flag must only be used when configured with "
               "eRPCStressor. Exiting...\n");
       exit(2);
     } else {
-      auto generator = makeGenerator(stressorConfig);
+      auto generator = makeGenerator(stressor_config);
     }
   } else {
     stressor_->start();
