@@ -233,7 +233,7 @@ class eRPCStressor : public Stressor {
     c.throttleFn = throttleFn;
 
     // Throughput stats from object.
-    c.stats = throughputStats_.at(thread_id);
+    c.stats = &throughputStats_.at(thread_id);
 
     // Start eRPC server on a unique port.
     size_t port = kServerBasePort + thread_id;
@@ -397,7 +397,7 @@ class eRPCStressor : public Stressor {
                                     ServerThreadContext& c,
                                     resp_t* resp) {
     try {
-      auto& stats = c.stats;
+      auto& stats = *c.stats;
       auto pid = c.pid;
       // at the end of every operation, throttle per the config.
       SCOPE_EXIT { c.throttleFn(); };

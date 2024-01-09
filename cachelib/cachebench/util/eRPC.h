@@ -60,7 +60,7 @@ class ServerThreadContext {
   erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
   std::function<void()> throttleFn;
   Stressor* stressor;
-  ThroughputStats stats;
+  ThroughputStats* stats;
   PoolId pid;
 
   ~ServerThreadContext() {}
