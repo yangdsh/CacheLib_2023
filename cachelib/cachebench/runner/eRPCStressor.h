@@ -143,6 +143,8 @@ class eRPCStressor : public Stressor {
     auto* c = static_cast<ServerThreadContext*>(_context);
     eRPCStressor* stressor = dynamic_cast<eRPCStressor*>(c->stressor);
 
+    printf("got to req_handler\n");
+
     // Check Cache health status.
     if (stressor->cache_->getInconsistencyCount() >=
             stressor->config_.maxInconsistencyCount ||
@@ -154,28 +156,33 @@ class eRPCStressor : public Stressor {
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
+    printf("req msgbuf size %zu", req_msgbuf->get_data_size());
 
     // Read request metadata from request buffer.
     req_meta_t meta;
     memcpy(&meta, req_msgbuf->buf_, sizeof(req_meta_t));
+    printf("copied meta");
 
     // Read the actual request from request buffer.
     req_data_t data;
     memcpy(&data, req_msgbuf->buf_ + sizeof(req_meta_t),
            meta.key_size + meta.value_size);
     std::unordered_map<std::string, std::string> admFeatureM;
+    printf("copied data");
 
     std::vector<size_t> sizes;
     sizes.push_back(meta.value_size);
 
     Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
                     meta.reqId.value_or(0), admFeatureM, data.value);
+    printf("properly parsed request");
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
     resp.result = OpResultType::kNop;
     resp.data = nullptr;
     resp.data_size = 0;
+    printf("running stressByDiscreteDistribution");
     stressor->stressByDiscreteDistribution(request, *c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
