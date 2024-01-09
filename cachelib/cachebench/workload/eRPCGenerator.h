@@ -169,8 +169,8 @@ class eRPCGenerator : public ReplayGeneratorBase {
     auto* c = static_cast<ClientThreadContext*>(_context);
     eRPCGenerator* gen = dynamic_cast<eRPCGenerator*>(c->gen);
 
-    const erpc::MsgBuffer& resp_msgbuf = c->resp_msgbuf;
-    c->rpc_->free_msg_buffer(resp_msgbuf);
+    c->rpc_->free_msg_buffer(c->req_msgbuf);
+    c->rpc_->free_msg_buffer(c->resp_msgbuf);
 
     c->num_resps_++;
     gen->send_reqs(c);
