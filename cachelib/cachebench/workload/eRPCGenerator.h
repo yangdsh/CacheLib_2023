@@ -23,7 +23,6 @@
 #include <folly/logging/xlog.h>
 #include <folly/system/ThreadName.h>
 #include <signal.h>
-#include <sys/_types/_size_t.h>
 
 #include "cachelib/cachebench/cache/Cache.h"
 #include "cachelib/cachebench/util/Exceptions.h"

@@ -26,22 +26,23 @@ namespace cachelib {
 namespace cachebench {
 Runner::Runner(const CacheBenchConfig& config)
     : stressor_{Stressor::makeStressor(config.getCacheConfig(),
-                                       config.getStressorConfig())},
-      config_(std::move(config)) {}
+                                       config.getStressorConfig())} {
+  StressorConfig stressor_config_ = config.getStressorConfig();
+}
 
 bool Runner::run(std::chrono::seconds progressInterval,
                  const std::string& progressStatsFile) {
   ProgressTracker tracker{*stressor_, progressStatsFile};
-  StressorConfig& stressor_config = config_.getStressorConfig();
 
   if (FLAGS_client) {
-    if (stressor_config.generator != "eRPC" || stressor_config.name != "eRPC") {
+    if (stressor_config_.generator != "eRPC" ||
+        stressor_config_.name != "eRPC") {
       fprintf(stderr,
               "The --client flag must only be used when configured with "
               "eRPCStressor. Exiting...\n");
       exit(2);
     } else {
-      auto generator = makeGenerator(stressor_config);
+      auto generator = Stressor::makeGenerator(stressor_config_);
     }
   } else {
     stressor_->start();
