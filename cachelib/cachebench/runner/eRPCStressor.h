@@ -167,9 +167,9 @@ class eRPCStressor : public Stressor {
 
     std::vector<size_t> sizes;
     sizes.push_back(meta.value_size);
-    Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl, 0,
-                    admFeatureM, data.value);
-    request.requestId = meta.reqId;
+
+    Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
+                    meta.reqId.value_or(0), admFeatureM, data.value);
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
