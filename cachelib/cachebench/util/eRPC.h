@@ -83,32 +83,6 @@ class ClientThreadContext {
   ~ClientThreadContext() {}
 };
 
-/// A basic session management handler that expects successful responses.
-void basic_sm_handler(int session_num,
-                      erpc::SmEventType sm_event_type,
-                      erpc::SmErrType sm_err_type,
-                      void* _context) {
-  auto* c = static_cast<ClientThreadContext*>(_context);
-  c->num_sm_resps_++;
-
-  erpc::rt_assert(
-      sm_err_type == erpc::SmErrType::kNoError,
-      "SM response with error " + erpc::sm_err_type_str(sm_err_type));
-
-  if (!(sm_event_type == erpc::SmEventType::kConnected ||
-        sm_event_type == erpc::SmEventType::kDisconnected)) {
-    throw std::runtime_error("Received unexpected SM event.");
-  }
-
-  fprintf(stderr,
-          "Rpc %u: Session number %d %s. Error %s. "
-          "Time elapsed = %.3f s.\n",
-          c->rpc_->get_rpc_id(), session_num,
-          erpc::sm_event_type_str(sm_event_type).c_str(),
-          erpc::sm_err_type_str(sm_err_type).c_str(),
-          c->rpc_->sec_since_creation());
-}
-
 } // namespace cachebench
 } // namespace cachelib
 } // namespace facebook

@@ -47,8 +47,8 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
-volatile sig_atomic_t ctrl_c_pressed = 0;
-void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
+volatile sig_atomic_t stressor_ctrl_c_pressed = 0;
+void stressor_ctrl_c_handler(int) { stressor_ctrl_c_pressed = 1; }
 
 // Implementation of stressor that uses a workload generator to stress an
 // instance of the cache.  All item's value in eRPCStressor follows CacheValue
@@ -246,7 +246,7 @@ class eRPCStressor : public Stressor {
     printf("Server starting on port %zu...\n", port);
     while (true) {
       rpc.run_event_loop(kAppEvLoopMs);
-      if (ctrl_c_pressed == 1)
+      if (stressor_ctrl_c_pressed == 1)
         break;
     }
   }
@@ -262,6 +262,7 @@ class eRPCStressor : public Stressor {
                                 config_.numThreads * config_.numOps / 1e6)
               << std::endl;
 
+    signal(SIGINT, stressor_ctrl_c_handler);
     stressWorker_ = std::thread([this] {
       std::vector<std::thread> workers;
 

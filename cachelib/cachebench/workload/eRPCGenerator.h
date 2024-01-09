@@ -30,8 +30,8 @@
 #include "cachelib/cachebench/util/eRPC.h"
 #include "cachelib/cachebench/workload/ReplayGeneratorBase.h"
 
-volatile sig_atomic_t ctrl_c_pressed = 0;
-void ctrl_c_handler(int) { ctrl_c_pressed = 1; }
+volatile sig_atomic_t gen_ctrl_c_pressed = 0;
+void gen_ctrl_c_handler(int) { gen_ctrl_c_pressed = 1; }
 
 namespace facebook {
 namespace cachelib {
@@ -116,7 +116,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
           ampFactor_, numShards_);
 
     // Start the client threads, one client per each port on the server.
-    signal(SIGINT, ctrl_c_handler);
+    signal(SIGINT, gen_ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_);
     for (size_t i = 0; i < numShards_; i++) {
       send_threads[i] = std::thread([this, i]() { thread_func(i); });
@@ -182,10 +182,36 @@ class eRPCGenerator : public ReplayGeneratorBase {
 
     while (c.num_sm_resps_ != 1) {
       c.rpc_->run_event_loop_once();
-      if (ctrl_c_pressed == 1)
+      if (gen_ctrl_c_pressed == 1)
         return;
     }
     printf("thread %zu connected!\n", c.thread_id_);
+  }
+
+  /// A basic session management handler that expects successful responses.
+  static void basic_sm_handler(int session_num,
+                               erpc::SmEventType sm_event_type,
+                               erpc::SmErrType sm_err_type,
+                               void* _context) {
+    auto* c = static_cast<ClientThreadContext*>(_context);
+    c->num_sm_resps_++;
+
+    erpc::rt_assert(
+        sm_err_type == erpc::SmErrType::kNoError,
+        "SM response with error " + erpc::sm_err_type_str(sm_err_type));
+
+    if (!(sm_event_type == erpc::SmEventType::kConnected ||
+          sm_event_type == erpc::SmEventType::kDisconnected)) {
+      throw std::runtime_error("Received unexpected SM event.");
+    }
+
+    fprintf(stderr,
+            "Rpc %u: Session number %d %s. Error %s. "
+            "Time elapsed = %.3f s.\n",
+            c->rpc_->get_rpc_id(), session_num,
+            erpc::sm_event_type_str(sm_event_type).c_str(),
+            erpc::sm_err_type_str(sm_err_type).c_str(),
+            c->rpc_->sec_since_creation());
   }
 
   void thread_func(size_t thread_id) {
@@ -208,7 +234,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // Start work
     send_reqs(&c);
     while (c.num_resps_ < config_.numOps && !shouldShutdown() &&
-           ctrl_c_pressed != 1) {
+           gen_ctrl_c_pressed != 1) {
       rpc.run_event_loop(kAppEvLoopMs);
     }
   }
