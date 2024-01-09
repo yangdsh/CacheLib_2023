@@ -92,7 +92,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
     signal(SIGINT, ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_);
     for (size_t i = 0; i < numShards_; i++) {
-      send_threads[i] = std::thread(thread_func, i);
+      send_threads[i] = std::thread([this, i]() { thread_func(i); });
     }
     for (auto& send_thread : send_threads)
       send_thread.join();

@@ -169,12 +169,7 @@ class eRPCStressor : public Stressor {
     sizes.push_back(meta.value_size);
     Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl, 0,
                     admFeatureM, data.value);
-    // We passed in reqId = 0 because meta.reqId is an option. Treat it here:
-    if (meta.reqId.has_value()) {
-      request.requestId = meta.reqId.value();
-    } else {
-      request.requestId = std::nullopt;
-    }
+    request.requestId = meta.reqId;
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;

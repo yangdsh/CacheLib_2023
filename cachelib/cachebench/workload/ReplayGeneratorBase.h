@@ -36,11 +36,6 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
-uint64_t cnt = 0;
-constexpr size_t kIfstreamBufferSize = 1L << 14;
-thread_local int keySuffixLocal = 100;
-thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
-
 struct ReqWrapper {
   ReqWrapper() = default;
 
@@ -67,6 +62,11 @@ struct ReqWrapper {
   // before fetching a new line from the trace
   uint32_t repeats_{0};
 };
+
+uint64_t cnt = 0;
+constexpr size_t kIfstreamBufferSize = 1L << 14;
+thread_local int keySuffixLocal = 100;
+thread_local std::unique_ptr<ReqWrapper> curReqWrapper;
 
 // ColumnInfo is to pass the information required to parse the trace
 // to map the column to the replayer-specific field ID.
