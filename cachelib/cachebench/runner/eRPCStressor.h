@@ -157,33 +157,36 @@ class eRPCStressor : public Stressor {
 
     // Get request buffer.
     const erpc::MsgBuffer* req_msgbuf = req_handle->get_req_msgbuf();
-    printf("req msgbuf size %zu", req_msgbuf->get_data_size());
+    printf("req msgbuf size %zu\n", req_msgbuf->get_data_size());
 
     // Read request metadata from request buffer.
     req_meta_t meta;
     memcpy(&meta, req_msgbuf->buf_, sizeof(req_meta_t));
-    printf("copied meta");
+    printf("copied meta\n");
 
     // Read the actual request from request buffer.
-    req_data_t data;
-    memcpy(&data, req_msgbuf->buf_ + sizeof(req_meta_t),
-           meta.key_size + meta.value_size);
+    std::string key(req_msgbuf->buf_ + sizeof(req_meta_t),
+                    req_msgbuf->buf_ + sizeof(req_meta_t) + meta.key_size);
+    std::string value(req_msgbuf->buf_ + sizeof(req_meta_t) + meta.key_size,
+                      req_msgbuf->buf_ + sizeof(req_meta_t) + meta.key_size +
+                          meta.value_size);
     std::unordered_map<std::string, std::string> admFeatureM;
-    printf("copied data");
+    printf("copied data\n");
 
     std::vector<size_t> sizes;
     sizes.push_back(meta.value_size);
 
-    Request request(data.key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
-                    meta.reqId.value_or(0), admFeatureM, data.value);
-    printf("properly parsed request");
+    Request request(key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
+                    meta.reqId.value_or(0), admFeatureM, value);
+    printf("properly parsed request key %s, value %s\n", key.c_str(),
+           value.c_str());
 
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
     resp.result = OpResultType::kNop;
     resp.data = nullptr;
     resp.data_size = 0;
-    printf("running stressByDiscreteDistribution");
+    printf("running stressByDiscreteDistribution\n");
     stressor->stressByDiscreteDistribution(request, *c, &resp);
 
     // Use dynamic response based on the size of the data from Cache.
