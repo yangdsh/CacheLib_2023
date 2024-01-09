@@ -140,7 +140,8 @@ void ThroughputStats::render(uint64_t elapsedTimeNs,
       util::narrow_cast<uint64_t>(addChainedSuccessRate);
 }
 
-std::unique_ptr<GeneratorBase> makeGenerator(const StressorConfig& config) {
+std::unique_ptr<GeneratorBase> Stressor::makeGenerator(
+    const StressorConfig& config) {
   if (config.generator == "piecewise-replay") {
     return std::make_unique<PieceWiseReplayGenerator>(config);
   } else if (config.generator == "replay") {
@@ -186,7 +187,7 @@ std::unique_ptr<Stressor> Stressor::makeStressor(
           stressorConfig.generator));
     }
 
-    auto generator = makeGenerator(stressorConfig);
+    auto generator = Stressor::makeGenerator(stressorConfig);
     if (cacheConfig.allocator == "LRU") {
       // default allocator is LRU, other allocator types should be added here
       return std::make_unique<AsyncCacheStressor<LruAllocator>>(
@@ -211,7 +212,7 @@ std::unique_ptr<Stressor> Stressor::makeStressor(
                                                              stressorConfig);
     }
   } else {
-    auto generator = makeGenerator(stressorConfig);
+    auto generator = Stressor::makeGenerator(stressorConfig);
     if (cacheConfig.allocator == "LRU") {
       // default allocator is LRU, other allocator types should be added here
       return std::make_unique<CacheStressor<LruAllocator>>(
