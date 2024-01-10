@@ -124,12 +124,12 @@ class eRPCGenerator : public ReplayGeneratorBase {
     signal(SIGINT, gen_ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_ *
                                           config_.numThreadsPerPort);
-    for (size_t i = 0; i < num_shards_; i++) {
+    for (size_t i = 0; i < numShards_; i++) {
       std::string client_uri =
           kClientHostname + ":" + std::to_string(kServerBasePort + i);
       erpc::Nexus nexus(client_uri);
 
-      for (size_t j = 0; j < config_.numThreadsPerPort; j++ _) {
+      for (size_t j = 0; j < config_.numThreadsPerPort; j++) {
         size_t thread_id = i * config_.numThreadsPerPort + j;
         send_threads[thread_id] = std::thread(
             [this, thread_id, nexus]() { thread_func(thread_id, nexus); });
