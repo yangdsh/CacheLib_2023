@@ -119,21 +119,26 @@ class eRPCGenerator : public ReplayGeneratorBase {
           "Started eRPCGenerator (amp factor {}, # of stressor threads {})",
           ampFactor_, numShards_);
 
+    // Create a Nexus for each port (numThreads). Each Nexus will be used by
+    // numThreadsPerPort threads.
+    std::vector<std::unique_ptr<erpc::Nexus>> nexi;
+    for (size_t i = 0; i < numShards_; i++) {
+      std::string client_uri =
+          kClientHostname + ":" + std::to_string(kServerBasePort + i);
+      erpc::Nexus nexus(client_uri);
+      nexi.push_back(std::make_unique(nexus));
+    }
+
     // Start the client threads, numThreadsPerPort clients per each port on the
     // server.
     signal(SIGINT, gen_ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_ *
                                           config_.numThreadsPerPort);
-    for (size_t i = 0; i < numShards_; i++) {
-      std::string client_uri =
-          kClientHostname + ":" + std::to_string(kServerBasePort + i);
-      erpc::Nexus nexus(client_uri);
-
-      for (size_t j = 0; j < config_.numThreadsPerPort; j++) {
-        size_t thread_id = i * config_.numThreadsPerPort + j;
-        send_threads[thread_id] = std::thread(
-            [this, thread_id, nexPtr = &nexus]() { thread_func(thread_id, nexPtr); });
-      }
+    for (size_t i = 0; i < send_threads.size(); i++) {
+      size_t nexus_id = i / config_.numThreadsPerPort;
+      erpc::Nexus* nexus = nexi[nexus_id].get();
+      send_threads[i] =
+          std::thread([this, i, nexus]() { thread_func(i, nexus); });
     }
 
     for (auto& send_thread : send_threads) {
