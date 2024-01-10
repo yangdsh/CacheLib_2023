@@ -121,11 +121,11 @@ class eRPCGenerator : public ReplayGeneratorBase {
 
     // Create a Nexus for each port (numThreads). Each Nexus will be used by
     // numThreadsPerPort threads.
-    std::vector<erpc::Nexus> nexi(numShards_);
+    std::vector<erpc::Nexus> nexi;
     for (size_t i = 0; i < numShards_; i++) {
       std::string client_uri =
           kClientHostname + ":" + std::to_string(kServerBasePort + i);
-      nexi[i] = erpc::Nexus(client_uri);
+      nexi.push_back(erpc::Nexus(client_uri));
     }
 
     // Start the client threads, numThreadsPerPort clients per each port on the
