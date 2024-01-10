@@ -272,7 +272,7 @@ class ReplayGeneratorBase : public GeneratorBase {
         repeatTraceReplay_{config_.repeatTraceReplay},
         ampFactor_(config.replayGeneratorConfig.ampFactor),
         timestampFactor_(config.timestampFactor),
-        numShards_(config.numThreads),
+        numShards_(config.numThreads * config.numThreadsPerPort),
         mode_(config_.replayGeneratorConfig.getSerializationMode()) {
     if (config.checkConsistency) {
       throw std::invalid_argument(
