@@ -197,9 +197,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
   }
 
   void connect_session(ClientThreadContext& c) {
-    std::string server_uri =
-        kServerHostname + ":" + std::to_string(kServerBasePort + c.thread_id_);
-    int session_num = c.rpc_->create_session(server_uri, c.thread_id_);
+    std::string server_uri = kServerHostname + ":" + std::to_string(c.port);
+    int session_num =
+        c.rpc_->create_session(server_uri, c.port - kServerBasePort);
     erpc::rt_assert(session_num >= 0, "Failed to create session");
     c.session_num = session_num;
 
@@ -240,6 +240,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
   void thread_func(size_t thread_id, erpc::Nexus* nexus) {
     ClientThreadContext c;
     c.thread_id_ = thread_id;
+    c.port = kServerBasePort + thread_id / config_.numThreadsPerPort;
     c.gen = this;
 
     erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void*>(&c),

@@ -70,6 +70,7 @@ class ServerThreadContext {
 class ClientThreadContext {
  public:
   size_t thread_id_;
+  size_t port;
   erpc::Rpc<erpc::CTransport>* rpc_ = nullptr; // Store the rpc instance
   int session_num = 0;                         // Session number
 
