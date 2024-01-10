@@ -468,8 +468,7 @@ inline std::unique_ptr<eRPCReqWrapper> eRPCGenerator::getReqInternal() {
 inline void eRPCGenerator::statsWorker() {
   while (!shouldShutdown()) {
     std::this_thread::sleep_for(std::chrono::seconds{1});
-    printf("Slept for 1 second\n");
-    // renderStats(0, std::cout);
+    renderStats(0, std::cout);
   }
 }
 
