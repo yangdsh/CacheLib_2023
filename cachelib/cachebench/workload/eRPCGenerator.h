@@ -135,8 +135,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
                                           config_.numThreadsPerPort);
     for (size_t i = 0; i < send_threads.size(); i++) {
       size_t nexus_id = i / config_.numThreadsPerPort;
+      Nexus* nexus = &(nexi[nexus_id]);
       send_threads[i] =
-          std::thread([this, i]() { thread_func(i, &nexi[nexus_id]); });
+          std::thread([this, i, nexus]() { thread_func(i, nexus); });
     }
 
     for (auto& send_thread : send_threads) {
