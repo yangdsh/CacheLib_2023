@@ -125,7 +125,8 @@ class eRPCGenerator : public ReplayGeneratorBase {
     for (size_t i = 0; i < numShards_; i++) {
       std::string client_uri =
           kClientHostname + ":" + std::to_string(kServerBasePort + i);
-      nexi.push_back(erpc::Nexus(client_uri));
+      erpc::Nexus nexus(client_uri);
+      nexi.push_back(std::move(nexus));
     }
 
     // Start the client threads, numThreadsPerPort clients per each port on the
