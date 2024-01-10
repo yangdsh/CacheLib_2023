@@ -121,8 +121,10 @@ class eRPCGenerator : public ReplayGeneratorBase {
     for (size_t i = 0; i < numShards_; i++) {
       send_threads[i] = std::thread([this, i]() { thread_func(i); });
     }
-    for (auto& send_thread : send_threads)
+    for (auto& send_thread : send_threads) {
       send_thread.join();
+    }
+    markShutdown();
   }
 
   // Send a singular request.
@@ -240,6 +242,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
            gen_ctrl_c_pressed != 1) {
       rpc.run_event_loop(kAppEvLoopMs);
     }
+    printf("thread %zu finished!\n", c.thread_id_);
   }
 
   virtual ~eRPCGenerator() {
