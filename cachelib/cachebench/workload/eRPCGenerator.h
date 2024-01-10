@@ -132,7 +132,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
       for (size_t j = 0; j < config_.numThreadsPerPort; j++) {
         size_t thread_id = i * config_.numThreadsPerPort + j;
         send_threads[thread_id] = std::thread(
-            [this, thread_id, nexus]() { thread_func(thread_id, nexus); });
+            [this, thread_id, nexPtr = &nexus]() { thread_func(thread_id, nexPtr); });
       }
     }
 
