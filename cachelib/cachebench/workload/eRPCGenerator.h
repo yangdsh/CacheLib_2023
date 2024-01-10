@@ -241,8 +241,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
     while (c.num_resps_ < config_.numOps && !shouldShutdown() &&
            gen_ctrl_c_pressed != 1) {
       rpc.run_event_loop(kAppEvLoopMs);
+      printf("thread %zu: num_resps_ = %zu\n", c.thread_id_, c.num_resps_);
     }
-    printf("thread %zu finished!\n", c.thread_id_);
+    printf("thread %zu finished after sending\n", c.thread_id_);
   }
 
   virtual ~eRPCGenerator() {
