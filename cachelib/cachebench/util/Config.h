@@ -214,6 +214,11 @@ struct StressorConfig : public JSONConfig {
   uint64_t numThreads{0}; // number of threads that will run
   uint64_t numKeys{0};    // number of keys that will be used
 
+  // For eRPC use only: number of client threads connected to each server port.
+  // For example, if numThreads = 24 and numThreadsPerPort = 2 means that a
+  // total of 48 threads will belaunched on the client.
+  uint64_t numThreadsPerPort{1};
+
   // Req generation throttling delay for each thread; those generated reqs are
   // subject to an additional global rate shaping specified below (opRatePerSec)
   uint64_t opDelayBatch{0}; // how many requests before a delay is added

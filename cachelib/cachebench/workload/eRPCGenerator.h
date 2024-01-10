@@ -119,11 +119,24 @@ class eRPCGenerator : public ReplayGeneratorBase {
           "Started eRPCGenerator (amp factor {}, # of stressor threads {})",
           ampFactor_, numShards_);
 
-    // Start the client threads, one client per each port on the server.
-    signal(SIGINT, gen_ctrl_c_handler);
-    std::vector<std::thread> send_threads(numShards_);
+    // Create a Nexus for each port (numThreads). Each Nexus will be used by
+    // numThreadsPerPort threads.
+    std::vector<erpc::Nexus> nexi(numShards_);
     for (size_t i = 0; i < numShards_; i++) {
-      send_threads[i] = std::thread([this, i]() { thread_func(i); });
+      std::string client_uri =
+          kClientHostname + ":" + std::to_string(kServerBasePort + i);
+      nexi[i] = erpc::Nexus(client_uri);
+    }
+
+    // Start the client threads, numThreadsPerPort clients per each port on the
+    // server.
+    signal(SIGINT, gen_ctrl_c_handler);
+    std::vector<std::thread> send_threads(numShards_ *
+                                          config_.numThreadsPerPort);
+    for (size_t i = 0; i < send_threads.size(); i++) {
+      size_t nexus_id = i / config_.numThreadsPerPort;
+      send_threads[i] =
+          std::thread([this, i]() { thread_func(i, &nexi[nexus_id]); });
     }
 
     for (auto& send_thread : send_threads) {
@@ -224,16 +237,12 @@ class eRPCGenerator : public ReplayGeneratorBase {
             c->rpc_->sec_since_creation());
   }
 
-  void thread_func(size_t thread_id) {
+  void thread_func(size_t thread_id, erpc::Nexus* nexus) {
     ClientThreadContext c;
     c.thread_id_ = thread_id;
     c.gen = this;
 
-    std::string client_uri =
-        kClientHostname + ":" + std::to_string(kServerBasePort + c.thread_id_);
-    erpc::Nexus nexus(client_uri);
-
-    erpc::Rpc<erpc::CTransport> rpc(&nexus, static_cast<void*>(&c),
+    erpc::Rpc<erpc::CTransport> rpc(nexus, static_cast<void*>(&c),
                                     static_cast<uint8_t>(thread_id),
                                     basic_sm_handler, kPhyPort);
     rpc.retry_connect_on_invalid_rpc_id_ = true;

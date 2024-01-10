@@ -42,6 +42,9 @@ StressorConfig::StressorConfig(const folly::dynamic& configJson) {
   JSONSetVal(configJson, numThreads);
   JSONSetVal(configJson, numKeys);
 
+  // For eRPC use only.
+  JSONSetVal(configJson, numThreadsPerPort);
+
   JSONSetVal(configJson, opDelayBatch);
   JSONSetVal(configJson, opDelayNs);
 

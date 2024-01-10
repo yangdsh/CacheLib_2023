@@ -28,6 +28,7 @@
         "cachePieceSize": 4194304,
         "numOps": 1250000,
         "numThreads": 24,
+        "numThreadsPerPort": 2,
         "populateItem": true,
         "traceFileName_cloudlab": "/nfs/memc_200m.tr.ant",
         "traceFileName": "/nfs/memc_200m.tr.ant",
