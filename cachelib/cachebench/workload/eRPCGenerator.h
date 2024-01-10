@@ -243,7 +243,8 @@ class eRPCGenerator : public ReplayGeneratorBase {
       rpc.run_event_loop(kAppEvLoopMs);
       printf("thread %zu: num_resps_ = %zu\n", c.thread_id_, c.num_resps_);
     }
-    printf("thread %zu finished after sending\n", c.thread_id_);
+    printf("thread %zu finished after sending %zu requests\n", c.thread_id_,
+           c.num_resps_);
   }
 
   virtual ~eRPCGenerator() {
@@ -489,7 +490,7 @@ inline void eRPCGenerator::genRequests() {
         break;
     }
   }
-
+  printf("Read file thread finished!\n");
   setEOF();
 }
 
