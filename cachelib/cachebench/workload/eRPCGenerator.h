@@ -132,7 +132,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // server.
     signal(SIGINT, gen_ctrl_c_handler);
     std::vector<std::thread> send_threads(numShards_);
-    for (size_t i = 0; i < numShards_ i++) {
+    for (size_t i = 0; i < numShards_; i++) {
       size_t nexus_id = i / config_.numThreadsPerPort;
       erpc::Nexus* nexus = nexi[nexus_id].get();
       send_threads[i] =
