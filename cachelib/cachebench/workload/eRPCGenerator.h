@@ -110,6 +110,10 @@ class eRPCGenerator : public ReplayGeneratorBase {
       folly::setThreadName("cb_replay_gen");
       genRequests();
     });
+    statsWorker_ = std::thread([this] {
+      folly::setThreadName("cb_replay_stats");
+      statsWorker();
+    });
 
     XLOGF(INFO,
           "Started eRPCGenerator (amp factor {}, # of stressor threads {})",
@@ -121,10 +125,11 @@ class eRPCGenerator : public ReplayGeneratorBase {
     for (size_t i = 0; i < numShards_; i++) {
       send_threads[i] = std::thread([this, i]() { thread_func(i); });
     }
+
     for (auto& send_thread : send_threads) {
       send_thread.join();
     }
-    markShutdown();
+    markShutdown(); // shutdown the generator
   }
 
   // Send a singular request.
@@ -245,12 +250,16 @@ class eRPCGenerator : public ReplayGeneratorBase {
     }
     printf("thread %zu finished after sending %zu requests\n", c.thread_id_,
            c.num_resps_);
+    markFinish();
   }
 
   virtual ~eRPCGenerator() {
     XCHECK(shouldShutdown());
     if (genWorker_.joinable()) {
       genWorker_.join();
+    }
+    if (statsWorker_.joinable()) {
+      statsWorker_.join();
     }
   }
 
@@ -333,6 +342,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
   TraceFileStream traceStream_;
 
   std::thread genWorker_;
+  std::thread statsWorker_;
 
   // Used to signal end of file as EndOfTrace exception
   std::atomic<bool> eof{false};
@@ -342,6 +352,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
   std::atomic<uint64_t> parseSuccess = 0;
 
   void genRequests();
+  void statsWorker();
 
   void setEOF() { eof.store(true, std::memory_order_relaxed); }
   bool isEOF() { return eof.load(std::memory_order_relaxed); }
@@ -452,6 +463,13 @@ inline std::unique_ptr<eRPCReqWrapper> eRPCGenerator::getReqInternal() {
   } while (reqWrapper->repeats_ == 0);
 
   return reqWrapper;
+}
+
+inline void eRPCGenerator::statsWorker() {
+  while (!shouldShutdown()) {
+    std::this_thread::sleep_for(std::chrono::seconds{1});
+    renderStats(0, std::cout);
+  }
 }
 
 uint64_t eRPCcnt = 0;

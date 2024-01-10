@@ -53,6 +53,7 @@ bool Runner::run(std::chrono::seconds progressInterval,
   if (!tracker.start(progressInterval)) {
     throw std::runtime_error("Cannot start ProgressTracker.");
   }
+  printf("ProgressTracker returned.\n");
 
   if (FLAGS_client) {
     return true;
