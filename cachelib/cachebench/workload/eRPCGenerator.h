@@ -570,6 +570,7 @@ const Request& eRPCGenerator::getReq(uint8_t,
     curERPCReqWrapper.reset();
     curERPCReqWrapper = std::make_unique<eRPCReqWrapper>(*reqWrapper);
   }
+  reqWrapper->req_.key.append(folly::sformat("{}", kClientHostname));
   eRPCReqWrapper* reqPtr = reqWrapper.release();
   return reqPtr->req_;
 }
