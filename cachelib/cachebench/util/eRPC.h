@@ -48,6 +48,7 @@ struct req_t {
 
 struct resp_t {
   OpResultType result;
+  std::optional<uint64_t> reqId;
   size_t data_size;
   // void* data;
   void* data;

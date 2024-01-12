@@ -176,6 +176,7 @@ class eRPCStressor : public Stressor {
     // Process request as per stressByDiscreteDistribution.
     resp_t resp;
     resp.result = OpResultType::kNop;
+    resp.reqId = request.requestId;
     resp.data = nullptr;
     resp.data_size = 0;
     stressor->stressByDiscreteDistribution(request, *c, &resp);
@@ -197,10 +198,13 @@ class eRPCStressor : public Stressor {
 
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.data_size,
-           sizeof(size_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(size_t), resp.data,
-           resp.data_size);
+    memcpy(resp.msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,
+           sizeof(uint64_t));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(uint64_t),
+           &resp.data_size, sizeof(size_t));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(uint64_t) +
+               sizeof(size_t),
+           resp.data, resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
 
