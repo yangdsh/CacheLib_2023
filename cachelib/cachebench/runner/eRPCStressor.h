@@ -198,7 +198,7 @@ class eRPCStressor : public Stressor {
 
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
-    memcpy(resp.msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,
            sizeof(uint64_t));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(uint64_t),
            &resp.data_size, sizeof(size_t));
