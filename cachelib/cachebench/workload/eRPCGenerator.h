@@ -194,7 +194,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
            sizeof(std::optional<uint64_t>));
 
     if (requestId) {
-      gen->notifyResult(requestId, result);
+      gen->notifyResult(requestId.value(), result);
     } 
 
     c->rpc_->free_msg_buffer(c->req_msgbuf);
