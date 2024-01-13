@@ -192,16 +192,15 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // call notify result
     OpResultType result;
     std::optional<uint64_t> requestId;
-    if (!requestId) {
-      printf("cont_func: REQUEST ID DOES NOT EXIST\n");
-    }
     memcpy(&result, c->resp_msgbuf.buf_, sizeof(OpResultType));
     memcpy(&requestId, c->resp_msgbuf.buf_ + sizeof(OpResultType),
            sizeof(std::optional<uint64_t>));
 
     if (requestId) {
       gen->notifyResult(requestId.value(), result);
-    } 
+    } else {
+      printf("cont_func: REQUEST ID DOES NOT EXIST\n");
+    }
 
     c->rpc_->free_msg_buffer(c->req_msgbuf);
     c->rpc_->free_msg_buffer(c->resp_msgbuf);
