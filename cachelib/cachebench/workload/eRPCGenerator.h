@@ -188,11 +188,14 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // Parse response for the original request ID that the response is for.
     // call notify result
     OpResultType result;
-    uint64_t requestId;
+    std::optional<uint64_t> requestId;
     memcpy(&result, c->resp_msgbuf.buf_, sizeof(OpResultType));
     memcpy(&requestId, c->resp_msgbuf.buf_ + sizeof(OpResultType),
-           sizeof(uint64_t));
-    gen->notifyResult(requestId, result);
+           sizeof(std::optional<uint64_t>));
+
+    if (requestId) {
+      gen->notifyResult(requestId, result);
+    } 
 
     c->rpc_->free_msg_buffer(c->req_msgbuf);
     c->rpc_->free_msg_buffer(c->resp_msgbuf);

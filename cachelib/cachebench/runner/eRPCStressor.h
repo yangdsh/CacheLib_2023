@@ -199,11 +199,12 @@ class eRPCStressor : public Stressor {
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,
-           sizeof(uint64_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(uint64_t),
+           sizeof(std::optional<uint64_t>));
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) +
+               sizeof(std::optional<uint64_t>),
            &resp.data_size, sizeof(size_t));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(uint64_t) +
-               sizeof(size_t),
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) +
+               sizeof(std::optional<uint64_t>) + sizeof(size_t),
            resp.data, resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
   }
