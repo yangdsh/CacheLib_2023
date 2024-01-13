@@ -156,11 +156,7 @@ class eRPCGenerator : public ReplayGeneratorBase {
     erpc_meta.ttl = req.ttlSecs;
     erpc_meta.reqId = req.requestId;
     erpc_meta.key_size = req.key.size();
-    erpc_meta.value_size = req.itemValue.size();
-
-    req_data_t erpc_data;
-    erpc_data.key = req.key;
-    erpc_data.value = req.itemValue;
+    erpc_meta.value_size = *(req.sizeBegin);
 
     // Allocate request buffer based on the size of the request and fill it.
     c->req_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
