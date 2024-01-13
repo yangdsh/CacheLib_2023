@@ -192,6 +192,9 @@ class eRPCStressor : public Stressor {
     // if req.sizeBegin < resp.data_size, then only return req.sizeBegin bytes.
     // resp.data_size is zero if not GET. If GET, limit to what the user
     // expects.
+    printf("ReqId %zu: trace size: %zu, cache size: %zu\n", 
+          request.requestId.value_or(0), *(request.sizeBegin), resp.data_size);
+
     if (*(request.sizeBegin) < resp.data_size) {
       resp.data_size = *(request.sizeBegin);
     }
