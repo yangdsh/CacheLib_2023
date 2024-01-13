@@ -196,6 +196,10 @@ class eRPCStressor : public Stressor {
       resp.data_size = *(request.sizeBegin);
     }
 
+    if (!resp.reqId) {
+      printf("req_handler: REQUEST ID DOES NOT EXIST\n");
+    }
+
     // Write a sequence to buffer.
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,

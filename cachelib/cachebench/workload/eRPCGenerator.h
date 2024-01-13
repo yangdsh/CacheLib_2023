@@ -154,6 +154,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
     req_meta_t erpc_meta;
     erpc_meta.op = req.getOp();
     erpc_meta.ttl = req.ttlSecs;
+    if (!req.requestId) {
+      printf("send_reqs: REQUEST ID DOES NOT EXIST\n");
+    }
     erpc_meta.reqId = req.requestId;
     erpc_meta.key_size = req.key.size();
     erpc_meta.value_size = *(req.sizeBegin);
@@ -189,6 +192,9 @@ class eRPCGenerator : public ReplayGeneratorBase {
     // call notify result
     OpResultType result;
     std::optional<uint64_t> requestId;
+    if (!requestId) {
+      printf("cont_func: REQUEST ID DOES NOT EXIST\n");
+    }
     memcpy(&result, c->resp_msgbuf.buf_, sizeof(OpResultType));
     memcpy(&requestId, c->resp_msgbuf.buf_ + sizeof(OpResultType),
            sizeof(std::optional<uint64_t>));
