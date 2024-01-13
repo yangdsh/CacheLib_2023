@@ -342,8 +342,6 @@ class CacheStressor : public Stressor {
           *(req.sizeBegin) += 8;
         }
 
-        printf("Request id: %zu, size begin: %zu\n", req.requestId.value_or(0), *(req.sizeBegin));
-
         // filter size larger than 4mb
         if (*(req.sizeBegin) >= maxAllocSize) {
           lastRequestId = req.requestId;
