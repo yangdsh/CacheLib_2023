@@ -168,7 +168,7 @@ class eRPCStressor : public Stressor {
     std::unordered_map<std::string, std::string> admFeatureM;
 
     std::vector<size_t> sizes;
-    sizes.push_back(meta.value_size);
+    sizes.push_back(meta.sizeBegin);
 
     Request request(key, sizes.begin(), sizes.end(), meta.op, meta.ttl,
                     meta.reqId.value_or(0), admFeatureM, value);
@@ -177,14 +177,9 @@ class eRPCStressor : public Stressor {
     resp_t resp;
     resp.result = OpResultType::kNop;
     resp.reqId = request.requestId;
-    resp.data = nullptr;
     resp.data_size = 0;
+    resp.data = nullptr;
     stressor->stressByDiscreteDistribution(request, *c, &resp);
-
-    // Use dynamic response based on the size of the data from Cache.
-    erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
-    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
-        sizeof(OpResultType) + sizeof(size_t) + resp.data_size);
 
     // resp.data_size describes the number of bytes in resp as it was given
     // to us by the cache. However, on the client size, we also expect `size`
@@ -196,6 +191,12 @@ class eRPCStressor : public Stressor {
       resp.data_size = *(request.sizeBegin);
     }
 
+    // Use dynamic response based on the size of the data from Cache.
+    erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
+    resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
+        sizeof(OpResultType) + sizeof(std::optional<uint64_t>) + sizeof(size_t) +
+        resp.data_size);
+
     if (!resp.reqId) {
       printf("req_handler: REQUEST ID DOES NOT EXIST\n");
     }
@@ -204,8 +205,7 @@ class eRPCStressor : public Stressor {
     memcpy(resp_msgbuf.buf_, &resp.result, sizeof(OpResultType));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType), &resp.reqId,
            sizeof(std::optional<uint64_t>));
-    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) +
-               sizeof(std::optional<uint64_t>),
+    memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) + sizeof(std::optional<uint64_t>),
            &resp.data_size, sizeof(size_t));
     memcpy(resp_msgbuf.buf_ + sizeof(OpResultType) +
                sizeof(std::optional<uint64_t>) + sizeof(size_t),

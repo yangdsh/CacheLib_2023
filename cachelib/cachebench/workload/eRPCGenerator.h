@@ -159,7 +159,10 @@ class eRPCGenerator : public ReplayGeneratorBase {
     }
     erpc_meta.reqId = req.requestId;
     erpc_meta.key_size = req.key.size();
-    erpc_meta.value_size = *(req.sizeBegin);
+    // req.itemValue.size() is presumably correct.
+    erpc_meta.value_size = req.itemValue.size();
+    // *(req.sizeBegin) is the expected value size from a GET
+    erpc_meta.sizeBegin = *(req.sizeBegin);
 
     // Allocate request buffer based on the size of the request and fill it.
     c->req_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
@@ -176,7 +179,8 @@ class eRPCGenerator : public ReplayGeneratorBase {
 
     // Prepare response buffer.
     c->resp_msgbuf = c->rpc_->alloc_msg_buffer_or_die(
-        *(req.sizeBegin) + sizeof(OpResultType) + sizeof(size_t));
+        erpc_meta.sizeBegin + sizeof(OpResultType) + sizeof(size_t) +
+        sizeof(std::optional<uint64_t>));
 
     // Send the request.
     c->rpc_->enqueue_request(c->session_num, kReqType, &c->req_msgbuf,

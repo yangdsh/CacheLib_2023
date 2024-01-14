@@ -32,6 +32,7 @@ struct req_meta_t {
   std::optional<uint64_t> reqId;
   size_t key_size;
   size_t value_size;
+  size_t sizeBegin;
 };
 
 // Request data.
@@ -46,11 +47,11 @@ struct req_t {
   struct req_data_t data;
 };
 
+// Response struct.
 struct resp_t {
   OpResultType result;
   std::optional<uint64_t> reqId;
   size_t data_size;
-  // void* data;
   void* data;
 };
 
