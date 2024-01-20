@@ -9,7 +9,7 @@ on:
     #     description: 'SHA of the previous commit to compare with'
     #     # required: true
 
-env:
+# env:
   # PREVIOUS_COMMIT_SHA: 3e5ce987dd32e6661d6544b59fbccfe919f6bf76
   #   # "git rev-parse HEAD~1"
 
