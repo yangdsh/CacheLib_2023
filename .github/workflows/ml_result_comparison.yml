@@ -1,0 +1,42 @@
+name: check_result
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci]
+    # with:
+    #   previous_commit_sha:
+    #     description: 'SHA of the previous commit to compare with'
+    #     # required: true
+
+env:
+  # PREVIOUS_COMMIT_SHA: 3e5ce987dd32e6661d6544b59fbccfe919f6bf76
+  #   # "git rev-parse HEAD~1"
+
+jobs:
+  check_results:
+    runs-on: ubuntu-latest  # Adjust runner type if needed
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Env
+        run: |
+          sudo apt install ninja-build
+          ./contrib/build.sh -j
+
+      - name: Run code and evaluate results
+        run: |
+          PREFIX="$PWD/opt/cachelib/"
+          LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:${LD_LIBRARY_PATH:-}"
+          export LD_LIBRARY_PATH
+          ./build-cachelib/cachebench/cachebench --json_test_config cachelib/cachebench/test_configs/memc_replay.json
+
+
+      # - name: Upload result_main.txt
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: "result_${{ github.actor }}_${{ github.sha }}.txt"
+      #     path: "current-version/result_curr.txt"
+      
+      
