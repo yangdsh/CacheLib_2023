@@ -338,8 +338,8 @@ class MMS3FIFO {
       return qdlist_.size();
     }
 
-    void setECMode(int mode) {
-      qdlist_.setECMode(mode);
+    void setECMode(int mode, int cid=0, float pRatio=0) {
+      qdlist_.setECMode(mode, cid, pRatio);
       return;
     }
 

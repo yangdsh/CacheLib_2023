@@ -2132,7 +2132,7 @@ class CacheAllocator : public CacheBase {
   int meta_update_ssd = 0;
   int cacheParsedCnt = 0;
   int firstEvict[32];
-  std::atomic<uint32_t> enqueue_token[100], tta_distribution[32];
+  std::atomic<uint32_t> enqueue_token[100], tta_distribution[32], tta_distribution_[32];
   std::atomic<int64_t> current_timestamp = 0;
   std::chrono::system_clock::time_point timePeriod;
 

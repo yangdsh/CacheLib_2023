@@ -1,5 +1,5 @@
 debug: false
-dbcollection: cachelib_throughput_1130_32cpu
+dbcollection: cachelib_throughput_0116
 
 nodes:
   #- 1/yangdsh@amd247.utah.cloudlab.us
@@ -8,13 +8,13 @@ nodes:
 
 cache_types:
   #- LRU*
-  - EC
+  #- EC
   #- LRU
   #- FIFO
   # - EC_adm
   #- LRU2Q
   #- TinyLFU
-  #- S3FIFO
+  - S3FIFO
 
 trace_files:
   #- ibm05.tr

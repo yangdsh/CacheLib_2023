@@ -8,9 +8,12 @@ EC:
     #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,5,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,version,1106
     #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,prediction_batch_size,128,version,1130,meta_update_ssd,0,bfRatio,0.01
     #- use_eviction_control,1,admission_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,prediction_batch_size,128,version,bf,meta_update_ssd,0,bfRatio,0.01
-    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,0104,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,4
+    #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,0.6,window_cnt,32,prediction_batch_size,64,version,0104,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,3,heuristic_aided,4
     #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,1,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,15,heuristic_aided,2
-    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,0.5,window_cnt,32,prediction_batch_size,64,version,0104,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,8,heuristic_aided,4
+    #- use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,0.05,window_cnt,32,prediction_batch_size,64,version,0108,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,3,heuristic_aided,4
+    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,training_batch_size,200000,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,3,ml_mess_mode,0,pRatio,0.05
+    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,training_batch_size,200000,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,4,ml_mess_mode,0,pRatio,0.05
+    - use_eviction_control,1,evict_all_mode,0,training_sample_rate,1,model_type,0,batch_size_factor,1,training_batch_size,200000,window_size_factor,1,debug_mode,0,num_iterations,16,num_leaves,16,rpe_target,3,window_cnt,32,prediction_batch_size,64,version,1130,meta_update_ssd,0,bfRatio,0.01,heuristic_mode,12,heuristic_aided,5,ml_mess_mode,0,pRatio,0.05
   useEvictionControl:
     - true
   poolRebalanceIntervalSec:
@@ -38,7 +41,9 @@ S3FIFO:
   useEvictionControl:
     - false
   MLConfig:
-    - admission_control,1,version,bf
+    - admission_control,1,version,bf,pRatio,0.03
+    - admission_control,1,version,bf,pRatio,0.05
+    - admission_control,1,version,bf,pRatio,0.1
   poolRebalanceIntervalSec:
     - 0
   rebalanceStrategy:

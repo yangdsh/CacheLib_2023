@@ -1051,10 +1051,6 @@ bool CacheAllocator<CacheTrait>::insertImpl(const WriteHandle& handle,
   // insert into the MM container before we make it accessible. Find will
   // return this item as soon as it is accessible.
   insertInMMContainer(*(handle.getInternal()));
-  // if (event == AllocatorApiEvent::INSERT_FROM_NVM) {
-  //   Item& item = *(handle.getInternal());
-    // XLOG_EVERY_MS(INFO, 1000) << item.access_in_windows;
-  // }
 
   AllocatorApiResult result;
   if (!accessContainer_->insert(*(handle.getInternal()))) {
@@ -1335,16 +1331,13 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           // get item to evict from the eviction queue
           Item* evict_pointer = nullptr;
           if (ec->evict_queue.try_dequeue(evict_pointer)) {
-            if (cid == 1)
-              n_eviction_queue ++;
+            n_eviction_queue ++;
             ec->evict_queue_size -= 1;
-            if (evict_pointer != nullptr && evict_pointer->get_item_flag2() == 1) {
-              toRecycle_ = evict_pointer;
-              // cout << toRecycle->getKey() << ' ' << toRecycle->getSize() << endl;
-            }
+          } 
+          if (evict_pointer != nullptr && evict_pointer->get_item_flag2() == 1) {
+            toRecycle_ = evict_pointer;
           } else {
-            if (cid == 1)
-              n_evict_empty ++;
+            n_evict_empty ++;
           }
         }
 
@@ -1353,7 +1346,6 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
           if (mm_size < 1024) {
             ec->use_eviction_control = false;
           } else {
-            mmContainers_[pid][cid]->setECMode(ec->heuristic_mode);
             ec->training_batch_size = mm_size * ec->batch_size_factor;
             ec->threshold = ec->logical_time;
             if (ec->training_batch_size > ec->max_batch_size)
@@ -1362,7 +1354,8 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
               ec->training_batch_size *= sqrt(ec->max_batch_size / ec->training_batch_size);
             }
             ec->params["batch_size"] = to_string(ec->training_batch_size);
-            std::cout << int(cid) << ' ' << ec->training_batch_size << std::endl;
+            std::cout << "Begin eviction in class " << int(cid) << " window size: " << ec->window_size
+              << " train batch: " << ec->training_batch_size << std::endl;
           }
           enqueue_token[cid].store(1);
         }
@@ -1374,9 +1367,8 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
 
           //  ----------------------- async mode ----------------------------
           // insert candidates into the queue
-          if (//!mmContainer.isLRU() || 
-              (!ec->prediction_running && ec->candidate_queue_size < enqueue_batch_size
-              && ec->evict_queue_size < enqueue_batch_size)) {
+          if (!ec->prediction_running && ec->candidate_queue_size < enqueue_batch_size
+              && ec->evict_queue_size < enqueue_batch_size) {
             // auto timeBegin_d = std::chrono::system_clock::now();
             // std::cout << "try enqueue at class " << int(cid) << std::endl;
             int i = 0;
@@ -1424,8 +1416,11 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
         }
       }
       if (toRecycle_ == nullptr) {
-        XLOG_EVERY_MS(INFO, 1000) << "<cid=1> heur/queue:" << n_evict_empty << ' ' << n_eviction_queue;
+        XLOG_EVERY_MS(INFO, 1000) << "heur/queue:" << n_evict_empty << ' ' << n_eviction_queue << '<' << n_reinsertion_queue;
         toRecycle_ = itr.get();
+      }
+      if (!toRecycle_) {
+        return {candidate, toRecycle};
       }
       auto* candidate_ =
           toRecycle_->isChainedItem()
@@ -1483,13 +1478,19 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
       from_head_cnt ++;
     else
       from_tail_cnt ++;
-    XLOG_EVERY_MS(INFO, 1000) << "<cid=1> head,tail " << from_head_cnt << ' ' << from_tail_cnt;
+    //XLOG_EVERY_MS(INFO, 1000) << "<cid=1> head,tail " << from_head_cnt << ' ' << from_tail_cnt;
   }
 #ifdef TRUE_TTA
   int64_t tta = (int64_t)candidate->next_timestamp - current_timestamp;
   if (tta < 0) tta = 0;
-  //if (candidate->get_item_flag() == 0)
-    tta_distribution[31-__builtin_clz((uint32_t)tta)] ++;
+  if (candidate->get_item_flag() == 1) {
+    if (candidate->get_is_reinserted() == 0) {
+      tta_distribution[31-__builtin_clz((uint32_t)tta)] ++;
+    }
+    else {
+      tta_distribution_[31-__builtin_clz((uint32_t)tta)] ++;
+    }
+  }
 #endif
 
   XDCHECK(toRecycle);
@@ -1944,10 +1945,17 @@ void CacheAllocator<CacheTrait>::render() {
   timePeriod = std::chrono::system_clock::now();
 #ifdef TRUE_TTA
   cacheParsedCnt = current_timestamp;
+  std::cout << endl;
   for (int i = 0 ; i < 32; i ++) {
     std::cout << tta_distribution[i] << ' ';
     tta_distribution[i] = 0;
   }
+  std::cout << endl;
+  for (int i = 0 ; i < 32; i ++) {
+    std::cout << tta_distribution_[i] << ' ';
+    tta_distribution_[i] = 0;
+  }
+  std::cout << endl;
   std::cout << endl;
 #endif
   std::cout << "parsed requests: " << cacheParsedCnt << '\n';
@@ -2063,7 +2071,8 @@ CacheAllocator<CacheTrait>::findImpl(typename Item::Key key, AccessMode mode) {
     const auto& allocSizes = pool.getAllocSizes();
     for (ClassId cid = 0; cid < static_cast<ClassId>(allocSizes.size()); ++cid) {
       EvictionController<CacheTrait>* ec = evictionControllers_[0][cid];
-      ec->info();
+      if (config_.useEvictionControl)
+        ec->info();
     }
   }
 #else
@@ -2515,6 +2524,8 @@ template <typename CacheTrait>
 void CacheAllocator<CacheTrait>::createMMContainers(const PoolId pid,
                                                     MMConfig config) {
   auto& pool = allocator_->getPool(pid);
+  // ec helps to pass arguments and is destroyed immediately afterwards
+  EvictionController<CacheTrait>* ec = new EvictionController<CacheTrait>(config_.MLConfig);
   for (unsigned int cid = 0; cid < pool.getNumClassId(); ++cid) {
     config.addExtraConfig(
         config_.trackTailHits
@@ -2522,7 +2533,9 @@ void CacheAllocator<CacheTrait>::createMMContainers(const PoolId pid,
                   .getAllocsPerSlab()
             : 0);
     mmContainers_[pid][cid].reset(new MMContainer(config, compressor_));
+    mmContainers_[pid][cid]->setECMode(ec->heuristic_mode, cid, ec->pRatio);
   }
+  delete ec;
 }
 
 template <typename CacheTrait>

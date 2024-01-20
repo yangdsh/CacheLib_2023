@@ -443,7 +443,7 @@ class CACHELIB_PACKED_ATTR CacheItem {
     past_timestamp = past_timestamp | val;
   }
   void set_past_timestamp(uint32_t past_timestamp_) {
-    past_timestamp = past_timestamp_ - (past_timestamp_&15);
+    past_timestamp = (past_timestamp&15) + past_timestamp_ - (past_timestamp_&15);
   }
   void set_item_flag(int val) {
     past_timestamp = past_timestamp - (past_timestamp&4);

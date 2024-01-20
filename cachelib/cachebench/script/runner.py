@@ -231,6 +231,7 @@ def run(args: dict, tasks: list):
         tasks = tasks[:1]
     if not os.path.exists(f'{temp_dir}/{ts}/'):
         os.mkdir(f'{temp_dir}/{ts}/')
+        os.system(f"cp -r {root}/cachelib/allocator/ {temp_dir}/{ts}/")
     if not upload_mode:
         copyfile(args['job_file'], f'{temp_dir}/{ts}/jobs.yaml')
         copyfile(args['algorithm_param_file'], f'{temp_dir}/{ts}/algo.yaml')

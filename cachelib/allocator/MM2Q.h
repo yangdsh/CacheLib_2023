@@ -542,7 +542,7 @@ class MM2Q {
       return lru_.size();
     }
 
-    void setECMode(int mode) {
+    void setECMode(int mode, int cid=0, float v=0) {
       return;
     }
 

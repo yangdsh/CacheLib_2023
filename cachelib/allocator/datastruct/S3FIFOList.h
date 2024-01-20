@@ -96,13 +96,11 @@ class S3FIFOList {
       mfifo_eviction_budget -= 1;
     } else if (isProbationary(node)) {
       pfifo_->remove(node);
-    } else {
-      XLOG_EVERY_MS(INFO, 1000) << "early evicted";
     }
-    if (pfifo_->size() + mfifo_->size() > 80000) {
-      XLOG_EVERY_MS(INFO, 1000) << "<cid=1> " << pfifo_->size() << ' ' << mfifo_->size() <<
-        " s3 promote/evict  " << s3_reinsert_cnt << ':' << s3_evict_cnt << ' ' << mfifo_eviction_budget;
-    }
+    /*if (cid == 4)
+      XLOG_EVERY_MS(INFO, 1000) << "<cid=" << cid << "> " << pfifo_->size() << ' ' << mfifo_->size() <<
+        " s3 promote/evict  " << s3_reinsert_cnt << ':' << s3_evict_cnt << ' ' << cnt_p << ' ' << cnt_m;
+    */
   }
 
   ADList& getListMain() const noexcept { return *mfifo_; }
@@ -111,14 +109,14 @@ class S3FIFOList {
 
   size_t size() const noexcept { return pfifo_->size() + mfifo_->size(); }
 
-  void setECMode(int mode) {
+  void setECMode(int mode, int cid_, float pRatio) {
     EC_mode = mode;
+    pRatio_ = pRatio;
+    cid = cid_;
     candidate_from_pfifo_promote = mode & 1;
     candidate_from_pfifo_evict = mode & 2;
     candidate_from_mfifo_promote = mode & 4;
     candidate_from_mfifo_evict = mode & 8;
-    XLOG_EVERY_MS(INFO, 1000) << "S3FIFO mode: " << candidate_from_pfifo_promote << ' ' << candidate_from_pfifo_evict
-      << ' ' << candidate_from_mfifo_promote << ' ' << candidate_from_mfifo_evict;
   }
   
   void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {
@@ -147,8 +145,6 @@ class S3FIFOList {
       if (!mfifo_populated && !tiny_too_large) {
         mfifo_populated = 1;
         mfifo_eviction_budget = 0;
-        if (pfifo_->size() + mfifo_->size() > 80000)
-          XLOG(INFO) << pfifo_->size() << ' ' << mfifo_->size();
       }
       if (_mfifo_eviction_budget > 0 && mfifo_populated)
         evict_main = true;
@@ -200,12 +196,16 @@ class S3FIFOList {
         } else {
           _mfifo_eviction_budget --;
           mfifo_->linkAtHead(*curr);
-          if (candidate_from_mfifo_evict) {
+          if (candidate_from_mfifo_evict) { // && curr->get_is_reinserted()) {
             nodeList[n_promoted++] = curr;
           } else {
             evictList[n_evict++] = curr;
           }
           s3_evict_cnt ++;
+          if (curr->get_is_reinserted())
+            cnt_m ++;
+          else
+            cnt_p ++;
           curr->set_item_flag2(1);
         }
       }
@@ -217,6 +217,7 @@ class S3FIFOList {
   T* getEvictionCandidate() {
     size_t listSize = pfifo_->size() + mfifo_->size();
     if (listSize == 0) {
+      //XLOG(INFO) << cid << ' ' << pfifo_->size() << ' ' << mfifo_->size();
       return nullptr;
     }
 
@@ -235,8 +236,6 @@ class S3FIFOList {
       if (!mfifo_populated && !tiny_too_large) {
         mfifo_populated = 1;
         mfifo_eviction_budget = 0;
-        if (pfifo_->size() + mfifo_->size() > 80000)
-          XLOG(INFO) << pfifo_->size() << ' ' << mfifo_->size();
       }
       if (mfifo_eviction_budget > 0 && mfifo_populated)
         evict_main = true;
@@ -244,7 +243,7 @@ class S3FIFOList {
       if (tiny_too_large && !evict_main) {
         curr = pfifo_->removeTail();
         if (curr == nullptr) {
-          //printf("pfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
+          printf("pfifo_->size() = %zu, %zu\n", pfifo_->size(), mfifo_->size());
           mfifo_eviction_budget = 1;
           continue;
         }
@@ -295,14 +294,17 @@ class S3FIFOList {
       unmarkProbationary(node);
       insert_to_mfifo += 1;
       mfifo_eviction_budget ++;
-      node.set_item_flag(1);
+      node.set_is_reinserted(1);
     } else {
       pfifo_->linkAtHead(node);
       markProbationary(node);
       unmarkMain(node);
       insert_to_pfifo += 1;
-      if (pfifo_->size() + mfifo_->size() > 80000)
-        XLOG_EVERY_MS(INFO, 1000) << "<cid=1> insert to p/m: " << insert_to_pfifo << ' ' << insert_to_mfifo;
+      node.set_is_reinserted(0);
+      /*
+      if (cid == 4)
+        XLOG_EVERY_MS(INFO, 1000) << "<cid=" << cid << "> insert to p/m: " << insert_to_pfifo << ' ' << insert_to_mfifo;
+      */
     }
   }
 
@@ -343,12 +345,15 @@ class S3FIFOList {
 
   mutable folly::cacheline_aligned<Mutex> mtx_;
 
-  constexpr static double pRatio_ = 0.05;
+  double pRatio_ = 0.05;
 
   AtomicFIFOHashTable hist_;
 
   int s3_evict_cnt = 0;
   int s3_reinsert_cnt = 0;
+  int cnt_p = 0;
+  int cnt_m = 0;
+  int cid = -1;
   int insert_to_pfifo = 0;
   int insert_to_mfifo = 0;
   int mfifo_eviction_budget = 0;
