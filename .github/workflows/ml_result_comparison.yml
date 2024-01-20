@@ -1,4 +1,4 @@
-name: check_result
+name: ml_result
 
 on:
   workflow_dispatch:
@@ -30,7 +30,8 @@ jobs:
           PREFIX="$PWD/opt/cachelib/"
           LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:${LD_LIBRARY_PATH:-}"
           export LD_LIBRARY_PATH
-          ./build-cachelib/cachebench/cachebench --json_test_config cachelib/cachebench/test_configs/memc_replay.json
+          ./build-cachelib/cachebench/cachebench --json_test_config cachelib/cachebench/test_configs/memc_replay_ML.json
+          ./build-cachelib/cachebench/cachebench --json_test_config cachelib/cachebench/test_configs/memc_replay_LRU.json
 
 
       # - name: Upload result_main.txt
