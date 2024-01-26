@@ -15,7 +15,9 @@ on:
 
 jobs:
   check_results:
-    runs-on: docker://sherry0506/cachelib:0.0  # ubuntu-latest
+    runs-on: ubuntu-latest #docker://sherry0506/cachelib:0.0  # ubuntu-latest
+    container:
+      image: docker://sherry0506/cachelib:0.0
 
     steps:
       - uses: actions/checkout@v3
