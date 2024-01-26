@@ -24,16 +24,13 @@ jobs:
 
       - name: Build Env
         run: |
+          cp -r -f cachelib /
           cd /
           rm -rf build-cachelib
           ./contrib/build-cachelib.sh
       
-
       - name: Run code and evaluate results
         run: |
-          cd /
-          echo $PWD
-          ls
           PREFIX="$PWD/opt/cachelib/"
           LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:${LD_LIBRARY_PATH:-}"
           export LD_LIBRARY_PATH
