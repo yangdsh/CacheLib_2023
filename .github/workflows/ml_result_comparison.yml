@@ -15,15 +15,15 @@ on:
 
 jobs:
   check_results:
-    runs-on: ubuntu-latest  # Adjust runner type if needed
+    runs-on: sherry0506/cachelib  # Adjust runner type if needed
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Build Env
-        run: |
-          sudo apt install ninja-build
-          ./contrib/build.sh -j
+      # - name: Build Env
+      #   run: |
+      #     sudo apt install ninja-build
+      #     ./contrib/build.sh -j
 
       - name: Run code and evaluate results
         run: |
