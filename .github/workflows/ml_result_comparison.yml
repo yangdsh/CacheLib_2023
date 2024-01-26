@@ -29,6 +29,7 @@ jobs:
 
       - name: Run code and evaluate results
         run: |
+          cd /
           echo $PWD
           ls
           PREFIX="$PWD/opt/cachelib/"
