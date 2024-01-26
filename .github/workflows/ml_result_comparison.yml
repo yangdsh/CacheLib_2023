@@ -22,10 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # - name: Build Env
-      #   run: |
-      #     sudo apt install ninja-build
-      #     ./contrib/build.sh -j
+      - name: Build Env
+        run: |
+          cd /
+          rm -rf build-cachelib
+          ./contrib/build-cachelib.sh
+      
 
       - name: Run code and evaluate results
         run: |

@@ -966,7 +966,7 @@ class EvictionController {
 
     void adjust_threshold() {
         if (cid == 1)
-            XLOG_EVERY_MS(INFO, 1000) << "<cid=" << int(cid) << ' ' << "> threshold: " << threshold
+            XLOG_EVERY_MS(INFO, 1000) << "<<cid=" << int(cid) << ' ' << ">> threshold: " << threshold
         << ' ' << float(reinserted_cnt) / (examined_cnt-reinserted_cnt) << ' ' << r_cnt / (e_cnt - r_cnt);
         if (r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction) {    
             if (r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction * 0.9 && e_cnt > 1000) {
