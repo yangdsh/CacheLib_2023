@@ -15,7 +15,7 @@ on:
 
 jobs:
   check_results:
-    runs-on: sherry0506/cachelib  # Adjust runner type if needed
+    runs-on: docker://sherry0506/cachelib:0.0  # Adjust runner type if needed
 
     steps:
       - uses: actions/checkout@v3
