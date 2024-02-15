@@ -15,9 +15,9 @@ namespace facebook {
 namespace cachelib {
 namespace cachebench {
 
-static const std::string kServerHostname = "128.110.219.167";
-static const std::string kClientHostname = "128.110.219.156"; // client-0
-// static const std::string kClientHostname = "128.110.219.157"; // client-1
+static const std::string kServerHostname = "128.110.219.166";
+static const std::string kClientHostname = "128.110.219.191"; // client-0
+// static const std::string kClientHostname = "128.110.219.159"; // client-1
 
 static constexpr uint8_t kReqType = 2;
 static constexpr uint8_t kPhyPort = 2; // Physical port num of the desired NIC
