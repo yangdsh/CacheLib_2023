@@ -187,9 +187,13 @@ class eRPCStressor : public Stressor {
     // if req.sizeBegin < resp.data_size, then only return req.sizeBegin bytes.
     // resp.data_size is zero if not GET. If GET, limit to what the user
     // expects. Also in case of cache misses this is needed. 
-    if (*(request.sizeBegin) < resp.data_size) {
-      resp.data_size = *(request.sizeBegin);
-    }
+    // if (*(request.sizeBegin) < resp.data_size) {
+    //   resp.data_size = *(request.sizeBegin);
+    // }
+
+    // fake data
+    resp.data_size = *(request.sizeBegin);
+    resp.data = calloc(resp.data_size);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
@@ -211,6 +215,8 @@ class eRPCStressor : public Stressor {
                sizeof(std::optional<uint64_t>) + sizeof(size_t),
            resp.data, resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
+
+    free(resp.data);
   }
 
   void server_thread(size_t thread_id) {
@@ -459,22 +465,24 @@ class eRPCStressor : public Stressor {
       case OpType::kLoneSet:
       case OpType::kSet: {
         if (config_.onlySetIfMiss) {
-          auto it = cache_->find(*key);
-          if (it != nullptr) {
-            return;
-          }
+          // auto it = cache_->find(*key);
+          // if (it != nullptr) {
+          //   return;
+          // }
         }
-        auto lock = chainedItemAcquireUniqueLock(*key);
-        resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
-                              req.nextTime, req.admFeatureMap, req.itemValue);
+        // auto lock = chainedItemAcquireUniqueLock(*key);
+        // resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
+        //                       req.nextTime, req.admFeatureMap, req.itemValue);
+
+        ++stats.set;
 
         break;
       }
       case OpType::kLoneGet:
       case OpType::kGet: {
         ++stats.get;
-        auto slock = chainedItemAcquireSharedLock(*key);
-        auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
+        // auto slock = chainedItemAcquireSharedLock(*key);
+        // auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
 
         if (ticker_) {
           ticker_->updateTimeStamp(req.timestamp);
@@ -482,32 +490,32 @@ class eRPCStressor : public Stressor {
         // TODO currently pure lookaside, we should
         // add a distribution over sequences of requests/access patterns
         // e.g. get-no-set and set-no-get
-        cache_->recordAccess(*key);
-        auto it = cache_->find(*key);
-        if (it == nullptr) {
-          ++stats.getMiss;
-          resp->result = OpResultType::kGetMiss;
+        // cache_->recordAccess(*key);
+        // auto it = cache_->find(*key);
+        // if (it == nullptr) {
+        //   ++stats.getMiss;
+        //   resp->result = OpResultType::kGetMiss;
 
-          if (config_.enableLookaside) {
-            // allocate and insert on miss
-            // upgrade access privledges, (lock_upgrade is not
-            // appropriate here)
-            slock = {};
-            xlock = chainedItemAcquireUniqueLock(*key);
-            setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
-                   req.admFeatureMap, req.itemValue);
-          }
-        } //** else if (it->get_is_reinserted()) {
+        //   if (config_.enableLookaside) {
+        //     // allocate and insert on miss
+        //     // upgrade access privledges, (lock_upgrade is not
+        //     // appropriate here)
+        //     slock = {};
+        //     xlock = chainedItemAcquireUniqueLock(*key);
+        //     setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
+        //            req.admFeatureMap, req.itemValue);
+        //   }
+        // } //** else if (it->get_is_reinserted()) {
           // from NVM cache
           //** result = OpResultType::kGetMiss;
         //** }
         else {
 #ifdef TRUE_TTA
-          it->next_timestamp = req.nextTime;
+          // it->next_timestamp = req.nextTime;
 #endif
           resp->result = OpResultType::kGetHit;
-          resp->data = const_cast<void*>(it->getMemory());
-          resp->data_size = it->getSize();
+          // resp->data = const_cast<void*>(it->getMemory());
+          // resp->data_size = it->getSize();
         }
         break;
       }
