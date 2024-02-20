@@ -192,8 +192,8 @@ class eRPCStressor : public Stressor {
     // }
 
     // fake data
-    resp.data_size = *(request.sizeBegin);
-    resp.data = malloc(resp.data_size);
+   // resp.data_size = *(request.sizeBegin);
+    //resp.data = malloc(resp.data_size);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
@@ -216,7 +216,7 @@ class eRPCStressor : public Stressor {
            resp.data, resp.data_size);
     c->rpc_->enqueue_response(req_handle, &resp_msgbuf);
 
-    free(resp.data);
+    //free(resp.data);
   }
 
   void server_thread(size_t thread_id) {
@@ -238,12 +238,12 @@ class eRPCStressor : public Stressor {
     const bool needDelay = opDelayBatch != 0 && opDelayNs != 0;
     uint64_t opCounter = 0;
     auto throttleFn = [&] {
-      if (needDelay && ++opCounter == opDelayBatch) {
-        opCounter = 0;
-        std::this_thread::sleep_for(opDelay);
-      }
+      //if (needDelay && ++opCounter == opDelayBatch) {
+        //opCounter = 0;
+        //std::this_thread::sleep_for(opDelay);
+      //}
       // Limit the rate if specified.
-      limitRate();
+      //limitRate();
     };
     c.throttleFn = throttleFn;
 
@@ -473,7 +473,6 @@ class eRPCStressor : public Stressor {
         // auto lock = chainedItemAcquireUniqueLock(*key);
         // resp->result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs,
         //                       req.nextTime, req.admFeatureMap, req.itemValue);
-
         ++stats.set;
 
         break;
@@ -484,9 +483,9 @@ class eRPCStressor : public Stressor {
         // auto slock = chainedItemAcquireSharedLock(*key);
         // auto xlock = decltype(chainedItemAcquireUniqueLock(*key)){};
 
-        if (ticker_) {
-          ticker_->updateTimeStamp(req.timestamp);
-        }
+        //if (ticker_) {
+          //ticker_->updateTimeStamp(req.timestamp);
+        //}
         // TODO currently pure lookaside, we should
         // add a distribution over sequences of requests/access patterns
         // e.g. get-no-set and set-no-get
@@ -509,14 +508,14 @@ class eRPCStressor : public Stressor {
           // from NVM cache
           //** result = OpResultType::kGetMiss;
         //** }
-        else {
-#ifdef TRUE_TTA
+        //else {
+//#ifdef TRUE_TTA
           // it->next_timestamp = req.nextTime;
-#endif
-          resp->result = OpResultType::kGetHit;
+//#endif
+//          resp->result = OpResultType::kGetHit;
           // resp->data = const_cast<void*>(it->getMemory());
           // resp->data_size = it->getSize();
-        }
+  //      }
         break;
       }
       case OpType::kDel: {
