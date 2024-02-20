@@ -193,7 +193,7 @@ class eRPCStressor : public Stressor {
 
     // fake data
     resp.data_size = *(request.sizeBegin);
-    resp.data = calloc(resp.data_size);
+    resp.data = malloc(resp.data_size);
 
     // Use dynamic response based on the size of the data from Cache.
     erpc::MsgBuffer& resp_msgbuf = req_handle->dyn_resp_msgbuf_;
