@@ -273,9 +273,11 @@ class FOLLY_PACK_ATTR RefcountWithFlags {
       const bool alreadyExclusive = curValue & exclusiveBitMask;
 
       if (unlinked || alreadyExclusive) {
+        // XLOG_EVERY_MS(INFO, 1000) << unlinked << ' ' << alreadyExclusive;
         return false;
       }
       if ((curValue & kAccessRefMask) != 0) {
+        // XLOG_EVERY_MS(INFO, 1000) << (curValue & kAccessRefMask);
         return false;
       }
 

@@ -44,7 +44,11 @@ struct ReqWrapper {
              sizes_.end(),
              reinterpret_cast<uint64_t>(this),
              other.req_),
-        repeats_(other.repeats_) {}
+        repeats_(other.repeats_) {
+#ifdef TRUE_TTA
+          req_.nextTime = other.req_.nextTime;
+#endif
+        }
 
   // current outstanding key
   std::string key_;
@@ -292,7 +296,10 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   req->req_.ttlSecs = ttlField.value_or(0);
   auto nextTimeField = traceStream_.template getField<size_t>(SampleFields::NEXT);
   req->req_.nextTime = nextTimeField.value_or(0);
-
+  if (config_.admissionThreshold != 0 &&
+      req->req_.nextTime > parseError + parseSuccess + config_.admissionThreshold)
+    return false;
+  XLOG_EVERY_MS(INFO, 1000) << "parse success and error: " << parseSuccess << ' ' << parseError;
   return true;
 }
 
@@ -304,8 +311,9 @@ inline std::unique_ptr<ReqWrapper> KVReplayGenerator::getReqInternal() {
 
     if (!parseRequest(line, reqWrapper)) {
       parseError++;
-      XLOG_N_PER_MS(ERR, 10, 1000) << folly::sformat(
-          "Parsing error (total {}): {}", parseError.load(), line);
+      //XLOG_N_PER_MS(ERR, 10, 1000) << folly::sformat(
+      //    "Parsing error (total {}): {}", parseError.load(), line);
+      reqWrapper->repeats_ = 0;
     } else {
       parseSuccess++;
     }
@@ -328,16 +336,9 @@ inline void KVReplayGenerator::genRequests() {
     std::unique_ptr<ReqWrapper> req;
     req.swap(reqWrapper);
     auto shardId = getShard(req->req_.key); //, req->key_.size() + req->sizes_[0]);
-    if (ampFactor_ == 42) {
-      shardId = ++cnt % config_.numThreads;
-    }
     while(1) {
       auto& stressorCtx = getStressorCtx(shardId);
       auto& reqQ = *stressorCtx.reqQueue_;
-      if (ampFactor_ == 42) {
-        req->req_.key = shardId;
-        *(req->req_.sizeBegin) = 131;
-      }
 
       if (!reqQ.write(std::move(req)) && !stressorCtx.isFinished() &&
              !shouldShutdown()) {

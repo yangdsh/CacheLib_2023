@@ -29,6 +29,10 @@
 #include <mlpack/methods/ann/ffn.hpp>
 #include <mlpack/methods/ann/loss_functions/mean_squared_error.hpp>
 #include <mlpack/methods/linear_regression/linear_regression.hpp>
+#include <Eigen/Dense>
+
+#define FOLLY_XLOG_MIN_LEVEL INFO
+#define LABEL_AS_FEATURE 1
 
 using namespace mlpack;
 using namespace mlpack::ann;
@@ -48,6 +52,23 @@ public:
     bool for_training = false;
     int feature_cnt = 32;
 
+    static float my_faster_logf (float val)
+    {
+        union { float val; int32_t x; } u = { val };
+        float log_2 = (float)(((u.x >> 23) & 255) - 128);
+        u.x   &= ~(255 << 23);
+        u.x   += 127 << 23;
+        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
+        return (log_2);
+        // return 31 - __builtin_clz(uint32_t(x));
+    }
+
+    static float my_faster_logf (float val, float base)
+    {
+        return my_faster_logf(val) / my_faster_logf(base);
+        // return 31 - __builtin_clz(uint32_t(x));
+    }
+
     virtual void* get_model() =0;
 
     virtual vector<double> get_model_importances() =0;
@@ -64,7 +85,7 @@ public:
 
     virtual void delete_model() =0;
 
-    virtual vector<double> predict() =0;
+    virtual vector<double> predict(int mode) =0;
 
     virtual void clear() =0;
 
@@ -177,7 +198,7 @@ public:
         return 1;
     }
 
-    vector<double> predict() {
+    vector<double> predict(int mode) {
         mat mat_x = conv_to<mat>::from(vec_x);
         mat_x.reshape(feature_cnt, n_in_batch);
         // cout << mat_x.n_rows << ' ' << mat_x.n_cols << endl;
@@ -209,17 +230,6 @@ public:
 
     vector<double> get_model_importances() {
         return vector<double>();
-    }
-
-    inline float my_faster_logf (float val)
-    {
-        union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
-        u.x   &= ~(255 << 23);
-        u.x   += 127 << 23;
-        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
-        return (log_2);
-        // return 31 - __builtin_clz(uint32_t(x));
     }
 
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
@@ -303,7 +313,7 @@ public:
         return 1;
     }
 
-    vector<double> predict() {      
+    vector<double> predict(int mode) {      
         mat mat_x = conv_to<mat>::from(vec_x);
         mat_x.reshape(feature_cnt, n_in_batch);
         rowvec predictions;
@@ -317,17 +327,6 @@ public:
         n_in_batch = 0;
         vec_x.clear();
         vec_y.clear();
-    }
-
-    inline float my_faster_logf (float val)
-    {
-        union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
-        u.x   &= ~(255 << 23);
-        u.x   += 127 << 23;
-        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
-        return (log_2);
-        // return 31 - __builtin_clz(uint32_t(x));
     }
     
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
@@ -413,6 +412,8 @@ public:
     map<string, string> model_params;
 
     float avg_label = 0;
+    uint64_t tta_bucket[100];
+    uint32_t tta_feat[100];
     
     void init_with_params(map<string, string> &params) {
         model_params = params;
@@ -460,17 +461,7 @@ public:
         inference_params["num_threads"] = inference_threads;
         training_params["num_threads"] = inference_threads;
     }
-    
-    inline float my_faster_logf (float val)
-    {
-        union { float val; int32_t x; } u = { val };
-        float log_2 = (float)(((u.x >> 23) & 255) - 128);
-        u.x   &= ~(255 << 23);
-        u.x   += 127 << 23;
-        log_2 += ((-0.3358287811f) * u.val + 2.0f) * u.val  -0.65871759316667f;
-        return (log_2);
-        // return 31 - __builtin_clz(uint32_t(x));
-    }
+
 
     LightGBM(map<string, string> &params) {
         init_with_params(params);
@@ -519,7 +510,7 @@ public:
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
         train_feats[n_in_batch] = access_in_windows;
         train_window_idxs[n_in_batch] = window_idx;
-        input_data.labels.push_back(my_faster_logf(future_interval+1));
+        input_data.labels.push_back(future_interval);
         n_in_batch ++;
         return 0;
     }
@@ -547,6 +538,9 @@ public:
         int32_t counter = input_data.indptr.back();
         for (int i = 0; i < n_in_batch; i ++) {
             std::bitset<32> feats(train_feats[i]);
+            //if (feats[train_window_idxs[i] % feature_cnt] == 0 && train_feats[i] != 0) {
+            //    XLOG(INFO) << feats << ' ' << train_window_idxs[i];
+            //}
             for (int j = train_window_idxs[i]; j > train_window_idxs[i] - feature_cnt && j >= 0; --j) {
                 if (feats[j % feature_cnt]) {
                     input_data.data.emplace_back(1);
@@ -573,6 +567,9 @@ public:
                 nullptr,
                 &trainData);
 
+        for (int i = 0; i < input_data.labels.size(); i ++) {
+            input_data.labels[i] = my_faster_logf(input_data.labels[i]);
+        }
         LGBM_DatasetSetField(trainData,
                             "label",
                             static_cast<void *>(input_data.labels.data()),
@@ -596,16 +593,72 @@ public:
             LGBM_BoosterSaveModel(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, "model.txt");
         }
         */
-        if (input_data.labels.size() >= 130000 && debug_mode)
-            get_model_importances();
+        if (input_data.labels.size() >= 130000 && debug_mode >= 2) {
+            cout << "label distribution: " << endl;
+            clear_tta();
+            get_dist<float>(input_data.labels);
+            clear_tta();
+            cout << "run label distribution: " << endl;
+            auto scores = predict(0);
+            get_dist<double>(scores);
+            info(1);
+        }
         LGBM_DatasetFree(trainData);
+        XLOG_EVERY_MS(INFO, 1000) << "<train size=" <<  n_in_batch
+            << "> number of 1s in feats: " << avg_label / n_in_batch;
         if (debug_mode >= 2) {
-            cout << "number of 1s in feats: " << avg_label / n_in_batch << endl;
             cout << "train time: " << std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::system_clock::now() - timeBegin).count() << endl;
         }
         clear();
         return 1;
+    }
+
+    template <typename T>
+    T rotate_left(T x, T amount){
+        const unsigned bits=sizeof(T)*8;
+        if (amount)
+            return (x<<amount)|(x>>(bits-amount));
+        return x;
+    }
+
+    void update_tta_bucket(double tta, int idx) {
+        int bucket_idx = my_faster_logf(tta / 100, 1.2);
+        bucket_idx = bucket_idx > 0 ? bucket_idx : 0;
+        tta_bucket[bucket_idx] ++;
+        if (tta_feat[bucket_idx] == 0) {
+            tta_feat[bucket_idx] = rotate_left<uint32_t>(train_feats[idx],
+                31 - (train_window_idxs[idx] % feature_cnt));
+        }
+    }
+
+    void clear_tta() {
+        for (int i = 0; i <= 99; i ++) {
+            tta_bucket[i] = 0;
+            tta_feat[i] = 0;
+        }
+    }
+
+    void print_tta_bucket() {
+        for (int i = 0; i <= 99; i ++) {
+            if (tta_bucket[i] < 10)
+                continue;
+            uint64_t threshold = pow(1.2, i) * 100;
+            std::bitset<32> feat(tta_feat[i]);
+            cout << threshold << ':' << tta_bucket[i] << ' ' << feat << endl;
+        }
+    }
+
+    template <class T>
+    void get_dist(vector<T> scores) {
+        for (int i = 0; i <= 99; i ++) {
+            tta_bucket[i] = 0;
+        }
+        for (int i = 0; i < scores.size(); i ++) {
+            double tta = exp2(scores[i]);
+            update_tta_bucket(tta, i);
+        }
+        print_tta_bucket();
     }
         
     float info(bool to_print) {
@@ -624,21 +677,12 @@ public:
             sum += importances[i];
         }
         clear();
-        for (int i = 0; i < 32; i ++) {
-            emplace_back(1, i);
-        }
-        auto scores = predict();
-        for (int i = 0; i < scores.size(); i ++) {
-            double TTA = exp2(scores[i]);
-            cout << "feature bit id: " << i << ' ' << TTA << endl;
-        }
-        clear();
         return sum;
     }
 
-    vector<double> predict() {
+    vector<double> predict(int mode) {
         auto scores = vector<double>(n_in_batch, 0);
-        if (!booster) {
+        if (!booster || mode == 2) {
             // XLOG_EVERY_MS(INFO, 1000) << "predict: model not trained";
             return scores;
         }
@@ -790,18 +834,29 @@ class EvictionController {
             if (it.first == "max_reinsertions") {
                 max_reinsertions = stoi(it.second);
             }
+            if (it.first == "use_largest_tta") {
+                use_largest_tta = stoi(it.second);
+            }
             if (it.first == "rpe_target") {
                 rpe_target = stof(it.second);
                 reinsertion_per_eviction = rpe_target;
+                if (max_reinsertions < rpe_target * 2)
+                    max_reinsertions = rpe_target * 2;
             }
             if (it.first == "threshold_changing_rate") {
                 threshold_changing_rate = stof(it.second);
             }
-            if (it.first == "use_adaptive_rpe") {
-                use_adaptive_rpe = stoi(it.second);
+            if (it.first == "use_rpe_running_average") {
+                use_rpe_running_average = stoi(it.second);
+            }
+            if (it.first == "use_rpe_oracle") {
+                use_rpe_oracle = stoi(it.second);
             }
             if (it.first == "freq_scaling") {
                 freq_scaling = stof(it.second);
+            }
+            if (it.first == "time_unit") {
+                time_unit = stoi(it.second);
             }
             if (it.first == "block_pred_in_nano") {
                 block_pred_in_nano = stoi(it.second);
@@ -845,10 +900,21 @@ class EvictionController {
     }
 
     void info() {
-        XLOG(INFO) << "<cid=" << int(cid) << ' '
+        std::cout << "<cid=" << int(cid) << ' '
             << "> ml reinserted/evicted: " << reinserted_cnt << ' ' << examined_cnt - reinserted_cnt
             << ' ' << avg_repeat / (examined_cnt - reinserted_cnt)
-            << ' ' << "rejected: " << reinserted_by_reuse;
+            << ' ' << "heur: " << n_evict_by_heur
+            << ' ' << "threshold: " << threshold
+            << " size: " <<  window_size 
+            << " train: " << training_batch_cnt
+            << " neg:" << neg_cnt
+            << std::endl;
+        /*if (cid == 1) {
+            for (auto bb: beladyBoundaries) {
+                cout << bb << ' ';
+            }
+            cout << endl << endl;
+        }*/
     }
 
     void prediction_worker() {
@@ -873,14 +939,12 @@ class EvictionController {
             if (cnt == 0)
                 continue;
             candidate_queue_size -= cnt;
-            // std::cout << "weak up" << std::endl;
-            if ((!trained() && !heuristic_aided) || evict_all_mode) {
+            if (evict_all_mode) {
                 evict_queue.enqueue_bulk(items_for_prediction, cnt);
                 evict_queue_size += cnt;
                 delete[] items_for_prediction;
                 continue;
             }
-            prediction_running = true;
 
             auto timeBegin = std::chrono::system_clock::now();
             std::shared_lock lock(model_mutex_);
@@ -889,18 +953,21 @@ class EvictionController {
             for (int i = 0; i < cnt; i ++) {
                 Item* item = items_for_prediction[i];
                 if (item == NULL) {
-                    std::cout << "node is null at prediction" << std::endl;
+                    XLOG(INFO) << "node is null at prediction";
                     break;
                 }
                 int window_idx = item->get_past_timestamp() / window_size;
                 bitset<32> w(item->access_in_windows);
+#ifdef LABEL_AS_FEATURE
+                if (item->next_timestamp - current_timestamp_global / time_unit > 1e7 && heuristic_aided == 4)
+                    w[window_idx] = 0;
+#endif
                 prediction_model->emplace_back(w.to_ulong(), window_idx);
             }
             build_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now() - timeBegin).count();
             
-            // cout << cid << ' ' << logical_time << endl;
-            auto scores = prediction_model->predict();
+            auto scores = prediction_model->predict(heuristic_aided);
             
             if (block_pred_in_nano != 0) {
                 nanosleep(&tim , &tim2);
@@ -918,56 +985,90 @@ class EvictionController {
                         * TTA_diff_scaling;
 
                 bool to_reinsert = 0;
+                if (rpe_target == 0) {
+                    if (items_for_prediction[i]->get_item_flag2())
+                        heur_evicted_cnt ++;
+                    else
+                        heur_reinserted_cnt ++;
+                    heur_reinserted_cnt *= (1-1e-5);
+                    heur_evicted_cnt *= (1-1e-5);
+                    reinsertion_per_eviction = float(heur_reinserted_cnt) / (heur_evicted_cnt + 1);
+                }
                 if (heuristic_aided == 1) {
                     to_reinsert = 1-items_for_prediction[i]->get_item_flag2();
                 }
 #ifdef TRUE_TTA
                 else if (heuristic_aided == 2) {
-                    TTA = items_for_prediction[i]->next_timestamp - current_timestamp_global;
-                    to_reinsert = ifReinsertItem(TTA);
+                    TTA = items_for_prediction[i]->next_timestamp - current_timestamp_global / time_unit;
+                    if (TTA < 0) {
+                        neg_tta_cnt ++;
+                        XLOG_EVERY_MS(INFO, 1000) << cid << ' ' << items_for_prediction[i]->next_timestamp 
+                        << ' ' << current_timestamp_global << ' ' << neg_tta_cnt;
+                        TTA = -TTA * 10;
+                    }
+                    to_reinsert = ifReinsertItem(TTA * 1.01, items_for_prediction[i]);
                 }
 #endif
                 else if (ml_mess_mode) {
                     to_reinsert = ml_mess_mode-1;
                 }
                 else if (heuristic_aided == 3) {
-                    TTA = 5000 * items_for_prediction[i]->get_item_flag2() + 4000 * (1 - float(i) / scores.size()) + 1000;
-                    to_reinsert = ifReinsertItem(TTA);
+                    TTA = 5000 * items_for_prediction[i]->get_item_flag2() 
+                        + 4000 * (1 - float(i) / scores.size()) + 1000;
+                    to_reinsert = ifReinsertItem(TTA, items_for_prediction[i]);
                 }
                 else {
                     if (trained()) {
-                        to_reinsert = ifReinsertItem(TTA);
-                    } else if (heuristic_aided) {
+                        to_reinsert = ifReinsertItem(TTA, items_for_prediction[i]);
+                    } else {
                         to_reinsert = 1-items_for_prediction[i]->get_item_flag2();
                     }
                     
                     if (heuristic_aided == 4) {
-                        if (items_for_prediction[i]->next_timestamp > 4e9) {
+                        if (items_for_prediction[i]->next_timestamp > current_timestamp_global / time_unit) {
                             neg_cnt ++;
                             _generateTrainingData(items_for_prediction[i], 
-                                items_for_prediction[i]->next_timestamp - current_timestamp_global);
+                                items_for_prediction[i]->next_timestamp - current_timestamp_global / time_unit);
+                        } else if (items_for_prediction[i]->next_timestamp == 0) {
+                            XLOG_EVERY_MS(INFO, 100) << cid << ' ' << items_for_prediction[i]->next_timestamp
+                                << ' ' << current_timestamp_global << ' ' << items_for_prediction[i]->getKey();
+                        }
+                    } else if (heuristic_aided == 5) {
+                        if (logical_time - past_timestamp > threshold_of_inactive) {
+                            neg_cnt ++;
+                            _generateTrainingData(items_for_prediction[i], threshold_of_inactive * 3);
                             items_for_prediction[i]->set_is_sampled(1);
                         }
-                    } else if (logical_time - past_timestamp > threshold_of_inactive) {
-                        neg_cnt ++;
-                        _generateTrainingData(items_for_prediction[i], threshold_of_inactive * 3);
-                        items_for_prediction[i]->set_is_sampled(1);
                     }
                 }
 
+                if (items_for_prediction[i]->get_is_sampled() == 0 && heuristic_aided != 4) { 
+                // was not accessed again
+                    to_reinsert = true;
+                    reinserted_by_reuse ++;
+                    XLOG_EVERY_MS(INFO, 1000) << "reused candidate cnt: " << reinserted_by_reuse;
+                }
+
                 if(!to_reinsert) {
-                    items_for_eviction[eviction_cnt++] = items_for_prediction[i];
-                    if (items_for_prediction[i]->get_is_sampled() == 1) { // was not accessed again
-                        items_for_prediction[i]->set_item_flag2(1); // can be evicted
-                    } else {
-                        items_for_prediction[i]->set_item_flag2(0);
-                        reinserted_by_reuse ++;
-                    }
-                    if (trained())
-                        adjust_threshold_inactive(logical_time - past_timestamp);
+                    //if (trained())
+                    //    adjust_threshold_inactive(logical_time - past_timestamp);
                     examined_cnt ++;
                     e_cnt ++;
                     avg_repeat += repeat;
+                    if (repeat == max_reinsertions) {
+                        n_evict_by_max ++;
+                        if (use_largest_tta) {
+                            TTA = largest_tta;
+                            items_for_eviction[eviction_cnt++] = largest_tta_item;
+                            largest_tta = 0;
+                            largest_tta_item = nullptr;
+                        } else {
+                            items_for_eviction[eviction_cnt++] = items_for_prediction[i];
+                        }
+                        XLOG_EVERY_MS(INFO, 1000) << " pass max reinsertion: " << cid << ' ' << n_evict_by_max;
+                    } else {
+                        items_for_eviction[eviction_cnt++] = items_for_prediction[i];
+                    }
                     repeat = 0;
                 } else {
                     reinserted_cnt ++;
@@ -978,11 +1079,11 @@ class EvictionController {
                     //items_for_prediction[i]->set_is_reinserted(1);// already reinserted
                 }
             }
-            if (trained() || heuristic_aided == 3)
-                adjust_threshold();
+            adjust_threshold();
             evict_queue.enqueue_bulk(items_for_eviction, eviction_cnt);
             evict_queue_size += eviction_cnt;
-            prediction_running = false;
+            XLOG_EVERY_MS(INFO, 1000) << "enqueue eviction cnt: " << eviction_cnt;
+
             delete[] items_for_eviction;
             delete[] items_for_prediction;
             predict_time += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()
@@ -991,53 +1092,118 @@ class EvictionController {
         }
     }
 
-    void update_tta_bucket(double tta) {
-        int bucket_idx = 0;
-        while (tta > 10) {
-            tta /= 10;
-            bucket_idx += 10;
+    void rebalanceTrueTTA() {
+        if (top2node.size() > low2node.size() / rpe_target) {
+            node2low[top2node.begin()->second] = 
+                low2node.insert({top2node.begin()->first, top2node.begin()->second});
+            node2top.erase(top2node.begin()->second);
+            top2node.erase(top2node.begin());
         }
-        bucket_idx += tta-1; // 29999 -> 41
-        if (bucket_idx > 99)
-            bucket_idx = 99;
+        if (top2node.size() < low2node.size() / rpe_target) {
+            node2top[low2node.rbegin()->second] = 
+                top2node.insert({low2node.rbegin()->first, low2node.rbegin()->second});
+            node2low.erase(low2node.rbegin()->second);
+            low2node.erase(std::next(low2node.rbegin()).base());
+        }
+    }
+
+    void removeTrueTTA(Item* node) {
+        uint64_t t = node->next_timestamp;
+        std::unique_lock lock(oracle_mutex_);
+        if (node2low.find(node) != node2low.end()) {
+            auto rank_iter = node2low[node];
+            low2node.erase(rank_iter);
+            node2low.erase(node);
+            rebalanceTrueTTA();
+        }
+        else if (node2top.find(node) != node2top.end()) {
+            auto rank_iter = node2top[node];
+            top2node.erase(rank_iter);
+            node2top.erase(node);
+            rebalanceTrueTTA();
+        }
+/*
+        if (node2rank.find(node) != node2rank.end()) {
+            auto rank_iter = node2rank[node];
+            rank2node.erase(rank_iter);
+            node2rank.erase(node);
+        }
+*/
+    }
+
+    void addTrueTTA(Item* node) {
+        uint64_t t = 0;
+        t = node->next_timestamp;
+        std::unique_lock lock(oracle_mutex_);
+        if (node2low.find(node) != node2low.end()) {
+            auto rank_iter = node2low[node];
+            low2node.erase(rank_iter);
+            node2low.erase(node);
+        }
+        if (node2top.find(node) != node2top.end()) {
+            auto rank_iter = node2top[node];
+            top2node.erase(rank_iter);
+            node2top.erase(node);
+        }
+/*
+        if (node2rank.find(node) != node2rank.end()) {
+            auto rank_iter = node2rank[node];
+            rank2node.erase(rank_iter);
+            node2rank.erase(node);
+        }
+        node2rank[node] = rank2node.insert({t, node});
+*/
+
+        auto smallest_in_top = top2node.begin()->first;
+        if (t > smallest_in_top) {
+            node2top[node] = top2node.insert({t, node});
+        } else {
+            node2low[node] = low2node.insert({t, node});
+        }
+        rebalanceTrueTTA();
+    }
+
+    void adjust_threshold_oracle() {
+        std::unique_lock lock(oracle_mutex_);
+        threshold = top2node.begin()->first - current_timestamp_global / time_unit;
+/*        int cnt = 0;
+        auto it = rank2node.rbegin();
+        for (; cnt < rank2node.size() / (1+rpe_target); cnt ++, it ++);
+        XLOG_EVERY_MS(INFO, 1000) << threshold << ' ' << it->first - current_timestamp_global / time_unit;
+        threshold = it->first - current_timestamp_global / time_unit;
+*/
+    }
+
+    void update_tta_bucket(double tta) {
+        if (use_rpe_running_average || use_rpe_oracle) {
+            return;
+        }
+        int bucket_idx = MLModel::my_faster_logf(tta / 100, 1.2);
+        if (bucket_idx < 0) {
+            bucket_idx = 0;
+        }
         tta_bucket[bucket_idx] ++;
     }
 
     void adjust_threshold() {
-        if (cid == 1)
-            XLOG_EVERY_MS(INFO, 1000) << "<cid=" << int(cid) << ' ' << "> threshold: " << threshold
-            << " rpe: " << float(reinserted_cnt) / (examined_cnt-reinserted_cnt) << " r&e: " << reinserted_cnt << ' ' << examined_cnt;
+        if (use_rpe_running_average || use_rpe_oracle) {
+            return;
+        }
         double total = 0;
-        threshold = 0;
         for (int i = 0; i <= 99; i ++) {
             total += tta_bucket[i];
         }
-        bool to_print = 0;
-        /*if (cid == 1) {
-            XLOG_EVERY_MS(INFO, 1000) << (to_print=1);
-            if (to_print) {
-                to_print = 0;
-                total = 0;
-                for (int i = 0; i <= 99; i ++) {
-                    total += tta_bucket[i];
-                    if (i % 10 == 0)
-                        std::cout << total << ' ';
-                }
-                cout << endl;
-            }
-        }*/
+
         double num_below_threshold = total * reinsertion_per_eviction / (reinsertion_per_eviction + 1);
         double sum = 0;
+        threshold = 0;
         for (int i = 0; i <= 99; i ++) {
             sum += tta_bucket[i];
             if (sum >= num_below_threshold && threshold == 0) {
-                threshold = 1;
-                int lower_digit = i;
-                while (lower_digit >= 10) {
-                    lower_digit -= 10;
-                    threshold *= 10;
-                }
-                threshold *= (lower_digit + 1); // + (num_below_threshold - (sum-tta_bucket[i])) / tta_bucket[i] );
+                threshold = pow(1.2, i) * 100;
+                if (sum < total * 0.95)
+                    threshold *= (1 
+                        + 0.2 * (num_below_threshold - (sum-tta_bucket[i])) / tta_bucket[i]);
             }
             tta_bucket[i] *= (1 - (float)prediction_batch_size / window_size);
         }
@@ -1045,7 +1211,8 @@ class EvictionController {
 
     void adjust_threshold_inactive(float t) {
         if (cid == 1)
-            XLOG_EVERY_MS(INFO, 1000) << "threshold of inactive: " << threshold_of_inactive << ' ' << s_cnt / (s_cnt + l_cnt);
+            XLOG_EVERY_MS(INFO, 1000) << "threshold of inactive: " 
+                << threshold_of_inactive << ' ' << s_cnt / (s_cnt + l_cnt);
         if (t < threshold_of_inactive) {
             s_cnt ++;
         } else {
@@ -1061,10 +1228,25 @@ class EvictionController {
     }
 
     void adjust_threshold_() {
-        if (cid == 1)
-            XLOG_EVERY_MS(INFO, 100) << "<cid=" << int(cid) << ' ' << "> threshold: " << threshold
-            << " rpe: " << float(reinserted_cnt) / (examined_cnt-reinserted_cnt) << " tmp rpe: " 
-            << r_cnt / (e_cnt - r_cnt) << ' ' << e_cnt;
+        if (!use_rpe_running_average || use_rpe_oracle) {
+            return;
+        }
+        // XLOG_EVERY_MS(INFO, 1000) << "<cid=" << int(cid) << ' ' << "> threshold: " << threshold
+        //    << " rpe: " << float(reinserted_cnt) / (examined_cnt-reinserted_cnt) 
+        //    << " r&e: " << reinserted_cnt << ' ' << examined_cnt;
+        if ((r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction - 1
+            || r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction * 0.5)
+            && r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction * 0.9) {
+            threshold *= 2;
+            r_cnt = 100;
+            e_cnt = r_cnt * (1+reinsertion_per_eviction) / reinsertion_per_eviction;
+        } else if ((r_cnt / (e_cnt-r_cnt) > reinsertion_per_eviction + 1
+            || r_cnt / (e_cnt-r_cnt) > reinsertion_per_eviction * 1.5)
+            && r_cnt / (e_cnt-r_cnt) > reinsertion_per_eviction * 1.1) {    
+            threshold *= 0.5;
+            r_cnt = 100;
+            e_cnt = r_cnt * (1+reinsertion_per_eviction) / reinsertion_per_eviction;
+        }
         if (r_cnt / (e_cnt-r_cnt) < reinsertion_per_eviction) {    
             threshold *= (1 + threshold_changing_rate);
         } else {
@@ -1074,19 +1256,32 @@ class EvictionController {
         e_cnt *= (1 - 1e-5);
     }
     
-    bool ifReinsertItem(uint32_t predicted_tta) {
+    bool ifReinsertItem(double predicted_tta, Item* item) {
         update_tta_bucket(predicted_tta);
         if (repeat == max_reinsertions) {
           return false;
         }
-        //adjust_threshold_();
+        adjust_threshold_();
         // decide whether to reinsert or evict and adjust the threshold
         if (predicted_tta < threshold) {
-            //if (repeat % int(reinsertion_per_eviction+1) == 0)
-            //    adjust_threshold_();
+            // maintain the largest tta of the current search attempt
+            if (use_largest_tta) {
+                if (predicted_tta > largest_tta) {
+                    largest_tta = predicted_tta;
+                    largest_tta_item = item;
+                }
+            }
             return true;
         } else {
             return false;
+        }
+    }
+
+    void remove(Item* item) {
+        if (use_rpe_oracle) {
+            removeTrueTTA(item);
+            XLOG_EVERY_MS(INFO, 1000) << "True TTA heap size: "
+                << node2low.size() << ' ' << node2top.size() << ' ' << window_size << ' ' << node2rank.size();
         }
     }
 
@@ -1101,6 +1296,16 @@ class EvictionController {
             current_time = util::getCurrentTimeSec();
         }
         if (window_size != 0) {
+            if (use_rpe_oracle)
+                adjust_threshold_oracle();
+            if (logical_time % (window_size/ 10) == 0) {
+                /*
+                if (cid == 1) {
+                    std::unique_lock lock(oracle_mutex_);
+                    beladyBoundaries.push_back(threshold);
+                }
+                */
+            }
             if (enable_training) {
                _generateTrainingData(item, current_time - item->get_past_timestamp());
             }
@@ -1128,9 +1333,11 @@ class EvictionController {
             }
             */
         } else {
-            item->access_in_windows = 1;
+            item->access_in_windows = 0;
         }
         item->set_past_timestamp(current_time);
+        if (use_rpe_oracle)
+            addTrueTTA(item);
     }
 
     void _generateTrainingData(Item* item, uint32_t tta_label) {
@@ -1140,11 +1347,21 @@ class EvictionController {
                 generate_in_progress.clear();
                 return;
             }
+            /*
+            if (tta_label < 100) {
+                small_label_cnt += 1;
+                XLOG_EVERY_MS(INFO, 1000) << "cid: " << cid << "small label: " << small_label_cnt;
+            }
+            */
             item->set_is_sampled(0);
             uint32_t sample_time = item->get_past_timestamp();
 
             bitset<32> w(item->access_in_windows);
             int window_idx = sample_time / window_size;
+#ifdef LABEL_AS_FEATURE
+            if (tta_label > 1e7 && heuristic_aided == 4)
+                w[window_idx] = 0;
+#endif
             training_model->emplace_back_training_sample(w.to_ulong(), window_idx, tta_label);
             training_batch_cnt += 1;
             maybe_train();
@@ -1164,16 +1381,13 @@ class EvictionController {
             training_model = build_ml_model();
             // cout << int(cid) << endl;
             // cout << "train size: " << training_batch_cnt << endl;
-            cout << "neg_cnt: " << neg_cnt << endl;
-            neg_cnt = 0;
+            // cout << "neg_cnt: " << neg_cnt << endl;
+            // neg_cnt = 0;
             if (async_mode && model_type != 1) {
                 train_threads.push_back(std::thread(&EvictionController::train_and_migrate, this));
                 // train_threads[train_threads.size()-1].detach();
             } else {
                 train_and_migrate();
-            }
-            for (int i = 0; i <= 99; i ++) {
-                tta_bucket[i] *= 0.1;
             }
         }
     }
@@ -1203,18 +1417,20 @@ class EvictionController {
             return;
         }
 
-        if (1) {
-            std::unique_lock lock(model_mutex_);
-            prediction_model->delete_model();
-            cout << cid << " is trained" << endl;
-            prediction_model->set_model(temp_training_model->get_model());
-        } else {
-            cout << "training model has error!" << endl;
-        }
+        update_model();
         delete temp_training_model;
         isTrained = true;
         training_in_progress = 0;
         return;
+    }
+
+    void update_model() {
+        std::unique_lock lock(model_mutex_);
+        for (int i = 0; i <= 99; i ++)
+            tta_bucket[i] *= 0.1;
+        prediction_model->delete_model();
+        XLOG(INFO) << cid << " is trained" << endl;
+        prediction_model->set_model(temp_training_model->get_model());
     }
 
     // parameters
@@ -1231,13 +1447,15 @@ class EvictionController {
     int use_eviction_control = true;
     bool use_admission_threshold = true;
     bool use_oracle = false;
-    int max_reinsertions = 1000;
+    int max_reinsertions = 10;
     int training_batch_size = 131072;
     int max_batch_size = 131072;
     int prediction_batch_size = 128;
     float reinsertion_per_eviction = 3;
     float rpe_target = 3;
-    bool use_adaptive_rpe = false;
+    bool use_rpe_running_average = false;
+    bool use_rpe_oracle = false;
+    bool use_largest_tta = false;
     float threshold_changing_rate = 1e-4;
     float TTA_diff_scaling = 1;
     float freq_scaling = 2;
@@ -1247,7 +1465,6 @@ class EvictionController {
     int sample_rate = 64;
     int prediction_size_threshold = 0;
     float batch_size_factor = 10;
-    bool prediction_running = false;
     bool ml_mess_mode = 0;
     float bfRatio = 0;
     float pRatio = 0.05;
@@ -1259,6 +1476,7 @@ class EvictionController {
     float window_size_factor = 10;
     int training_sample_rate = 5;
     int reinsert_sample_rate = 5;
+    int time_unit = 1;
     
     // running variables
     MLModel* training_model = NULL;
@@ -1274,7 +1492,7 @@ class EvictionController {
     std::condition_variable cv;
     moodycamel::ConcurrentQueue<Item*> evict_queue, candidate_queue;
     std::atomic<int> candidate_queue_size = 0, evict_queue_size = 0;
-    // mutable folly::cacheline_aligned<folly::DistributedMutex> mutex_;
+    mutable std::mutex oracle_mutex_;
     mutable std::shared_mutex model_mutex_;
     int training_batch_cnt = 0;
     int neg_cnt = 0;
@@ -1284,9 +1502,12 @@ class EvictionController {
     float candidate_ratio = 1;
     int num_in_cache = 0;
     uint32_t repeat = 0;
+    double largest_tta = 0;
+    Item* largest_tta_item = nullptr; 
     double avg_repeat = 0;
     bool should_terminate = false;
     int reinserted_by_reuse = 0;
+    int small_label_cnt = 0;
     int n_loose = 0, n_tight = 0;
     std::atomic<uint32_t> logical_time = 0;
     int cid;
@@ -1294,10 +1515,18 @@ class EvictionController {
     bool is_mess_period = 0;
     int window_size = 0;
     int64_t current_timestamp_global;
+    std::multimap<int64_t, Item*> low2node, top2node, rank2node;
+    std::map<Item*, typename std::multimap<int64_t, Item*>::iterator> node2low, node2top, node2rank;
+    std::vector<int64_t> beladyBoundaries;
 
     // stat
     uint32_t examined_cnt = 0;
     uint32_t reinserted_cnt = 0;
+    uint32_t n_evict_by_heur = 0;
+    uint32_t n_evict_by_max = 0;
+    double heur_evicted_cnt = 0;
+    double heur_reinserted_cnt = 0;
+    uint64_t neg_tta_cnt = 0;
     float e_cnt = 0;
     float r_cnt = 0;
     float s_cnt = 0;

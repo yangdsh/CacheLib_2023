@@ -573,14 +573,14 @@ Cache<Allocator>::asyncFind(Key key) {
 }
 
 template <typename Allocator>
-typename Cache<Allocator>::WriteHandle Cache<Allocator>::findToWrite(Key key) {
+typename Cache<Allocator>::WriteHandle Cache<Allocator>::findToWrite(Key key, bool doNvmInvalidation) {
   auto findToWriteFn = [&]() {
     util::LatencyTracker tracker;
     if (FLAGS_report_api_latency || true) {
       tracker = util::LatencyTracker(cacheFindLatency_);
     }
     // find from cache and wait for the result to be ready.
-    auto it = cache_->findToWrite(key);
+    auto it = cache_->findToWrite(key, doNvmInvalidation);
     it.wait();
 
     if (touchValueEnabled()) {

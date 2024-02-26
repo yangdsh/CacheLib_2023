@@ -151,6 +151,17 @@ struct MMS3FIFOCollection {
   1: required map<i32, map<i32, MMS3FIFOObject>> pools,
 }
 
+struct MMBeladyConfig {
+}
+
+struct MMBeladyObject {
+  1: required MMBeladyConfig config
+}
+
+struct MMBeladyCollection {
+  1: required map<i32, map<i32, MMBeladyObject>> pools,
+}
+
 struct ChainedHashTableObject {
   // fields in ChainedHashTable::Config
   1: required i32 bucketsPower;

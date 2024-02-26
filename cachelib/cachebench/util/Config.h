@@ -267,6 +267,8 @@ struct StressorConfig : public JSONConfig {
   // By default, timestamps are in milliseconds.
   uint64_t timestampFactor{1000};
 
+  double admissionThreshold{0};
+
   bool useCombinedLockForIterators{false};
 
   double allocFactor{1.5};

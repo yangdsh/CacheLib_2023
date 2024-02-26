@@ -1,26 +1,27 @@
 debug: false
-dbcollection: cachelib_throughput_0116
+dbcollection: cachelib_s3fifo_0225
 
 nodes:
-  #- 1/yangdsh@amd247.utah.cloudlab.us
-  - 1/yangdsh@amd249.utah.cloudlab.us
+  - 1/yangdsh@amd272.utah.cloudlab.us
+  - 1/yangdsh@amd262.utah.cloudlab.us
   - 1/localhost
 
 cache_types:
   #- LRU*
-  #- EC
-  #- LRU
+  - EC
+  - LRU
   #- FIFO
   # - EC_adm
   #- LRU2Q
-  #- TinyLFU
+  - TinyLFU
   - S3FIFO
+  #- Belady
 
 trace_files:
   #- ibm05.tr
-  - memc_200m_with_ssd.tr
+  #- memc_200m_with_ssd.tr
   #- fbobj_with_ssd.tr
-  #- config_kvcache_with_ssd.tr
+  - config_kvcache_with_ssd.tr
   #- twitter_7_with_ssd.tr
   #- memc_200m.tr
   #- config_kvcache.tr

@@ -124,7 +124,7 @@ class MMS3FIFO {
     // whether the lru needs to be updated on writes for recordAccess. If
     // false, accessing the cache for writes does not promote the cached item
     // to the head of the lru.
-    bool updateOnWrite{false};
+    bool updateOnWrite{true};
 
     // whether the lru needs to be updated on reads for recordAccess. If
     // false, accessing the cache for reads does not promote the cached item
@@ -351,7 +351,7 @@ class MMS3FIFO {
 
     static void markReinserted(T& node) noexcept {return;}
 
-    void moveToHeadLocked(T& node) noexcept {qdlist_.moveToHead(node);}
+    void moveToHeadLocked(T& node) noexcept {qdlist_.moveToHeadLocked(node);}
 
     size_t counterSize() {return 0;}
 

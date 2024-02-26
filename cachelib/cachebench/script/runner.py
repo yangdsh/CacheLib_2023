@@ -33,8 +33,8 @@ debug_nfs = 0
 upload_mode = False
 should_upload = True
 sharding_mode = False
-multi_mode = 0
-n_cores = 32
+multi_mode = -1
+n_cores = 16
 if upload_mode:
     # nsdi_cachelib_stress_replay_full_sleep3: 16 instances, 16 threads, sleep 87us
     # nsdi_cachelib_stress_replay_full_sleep4: 8 instances, 24 threads, sleep 87us
@@ -49,7 +49,7 @@ if upload_mode:
     #ts = "1680481369" # 2941604
     # 1680631155, 32xxxxxx
     # 1680631125, 29xxxxxx
-    ts = "1699845915"
+    ts = "1708534403"
 
 
 def to_task_config(task, task_id):
@@ -61,11 +61,12 @@ def to_task_config(task, task_id):
             if k in task:
                 config['cache_config'][k] = task[k]
         for k in ('numOps', 'numThreads', "wallTimeReplaySpeed", "cacheSetLatency"
-                  , 'mlReqUs'):
+                  , 'mlReqUs', 'admissionThreshold'):
             if k in task:
                 config['test_config'][k] = task[k]
         if 'ampFactor' in task:
             config['test_config']['replayGeneratorConfig']['ampFactor'] = task['ampFactor']
+            config['cache_config']['MLConfig'] += ',time_unit,' + str(task['ampFactor'])
         #config['test_config']['traceFileName'] = config['test_config']['traceFileName_' + env]
         if sharding_mode:
             config['cache_config']['cacheSizeMB'] = str(int(config['cache_config']['cacheSizeMB']) // 56)
@@ -81,7 +82,7 @@ def to_task_config(task, task_id):
                 device = '/dev/nvme0n1p4'
             else:
                 device = '/dev/nvme1n1'
-            config['cache_config']['nvmCachePaths'] = ['/dev/nvme1n1', '/dev/nvme0n1p4']
+            config['cache_config']['nvmCachePaths'] = [device] #['/dev/nvme1n1', '/dev/nvme0n1p4']
         config['test_config']['numOps'] = int(
             config['test_config']['numOps'] / config['test_config']['numThreads'])
         fout = open(f'{temp_dir}/{ts}/{task_id}.json', 'w')
@@ -321,6 +322,8 @@ def upload_results(tasks, timestamp):
             result_dict['cache_type'] = tasks[i]['cache_type']
             if 'numThreads' in tasks[i]:
                 result_dict['numThreads'] = tasks[i]['numThreads']
+            if 'admissionThreshold' in tasks[i]:
+                result_dict['admissionThreshold'] = tasks[i]['admissionThreshold']
             if 'ampFactor' in tasks[i]:
                 result_dict['ampFactor'] = tasks[i]['ampFactor']
         '''with open(f'{temp_dir}/{timestamp}/{i}.stat') as f:

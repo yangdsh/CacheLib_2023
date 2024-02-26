@@ -27,7 +27,7 @@ cd "$dir/.." || die "failed to change-dir into $dir/.."
 test -d cachelib || die "failed to change-dir to expected root directory"
 
 
-# CMAKE_PARAMS="-DCMAKE_BUILD_TYPE=RelWithDebInfo -GNinja"
+#CMAKE_PARAMS="-DCMAKE_BUILD_TYPE=RelWithDebInfo -GNinja"
 CMAKE_PARAMS="-DCMAKE_BUILD_TYPE=Release -GNinja"
 # After ensuring we are in the correct directory, set the installation prefix"
 PREFIX="$PWD/opt/cachelib"

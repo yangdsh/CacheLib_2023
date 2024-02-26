@@ -592,7 +592,7 @@ class CacheAllocator : public CacheBase {
   // @param key   the key for lookup
   // @return      the handle for the item or a handle to nullptr if the key does
   //              not exist.
-  FOLLY_ALWAYS_INLINE ReadHandle peek(Key key);
+  FOLLY_ALWAYS_INLINE WriteHandle peek(Key key);
 
   // Returns true if a key is potentially in cache. There is a non-zero chance
   // the key does not exist in cache (e.g. hash collision in NvmCache). This
@@ -1725,6 +1725,10 @@ class CacheAllocator : public CacheBase {
 
   void insertToNVM(WriteHandle& handle);
 
+  void initEC(EvictionController<CacheTrait>* ec, size_t mm_size);
+  void evictByEC(EvictionController<CacheTrait>* ec, Item*& toRecycle_);
+  void enqueueCandidateEC(EvictionController<CacheTrait>* ec, MMContainer& mmContainer);
+
   // Get next eviction candidate from MMContainer, remove from AccessContainer,
   // MMContainer and insert into NVMCache if enabled.
   //
@@ -2123,6 +2127,7 @@ class CacheAllocator : public CacheBase {
   uint32_t n_evict_empty = 0;
   uint32_t from_head_cnt = 0;
   uint32_t from_tail_cnt = 0;
+  uint64_t total_miss = 0;
   std::atomic<uint32_t> n_miss = 0;
   // a filter per pool per class to decide whether an eviction candidate should be reinserted
   std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
@@ -2342,5 +2347,7 @@ using Lru2QAllocator = CacheAllocator<Lru2QCacheTrait>;
 using TinyLFUAllocator = CacheAllocator<TinyLFUCacheTrait>;
 
 using S3FIFOAllocator = CacheAllocator<S3FIFOCacheTrait>;
+
+using BeladyAllocator = CacheAllocator<BeladyCacheTrait>;
 } // namespace cachelib
 } // namespace facebook

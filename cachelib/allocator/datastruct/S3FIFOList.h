@@ -308,6 +308,16 @@ class S3FIFOList {
     }
   }
 
+  void moveToHeadLocked(T& node) noexcept {
+    if (isMain(node)) {
+      mfifo_->remove(node);
+      mfifo_->linkAtHead(node);
+    } else if (isProbationary(node)) {
+      pfifo_->remove(node);
+      pfifo_->linkAtHead(node);
+    }
+  }
+
   // Bit MM_BIT_0 is used to record if the item is hot.
   void markProbationary(T& node) noexcept {
     node.template setFlag<RefFlags::kMMFlag0>();

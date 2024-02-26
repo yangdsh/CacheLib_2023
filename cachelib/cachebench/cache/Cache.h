@@ -153,6 +153,16 @@ class Cache {
   // @return read handle for the item if present or null handle.
   ReadHandle find(Key key);
 
+  void markUseful(const ReadHandle& handle) {
+    cache_->markUseful(handle, AccessMode::kRead);
+  }
+
+  WriteHandle peek(Key key) {
+    return cache_->peek(key);
+  }
+
+  uint64_t total_miss = 0;
+
   // perform lookup in the cache asynchronously. The handle will be returned
   // directly without waiting. Caller needs to handle the consistency check and
   // simulate performance impact when the handle is ready. This is also used to
@@ -174,7 +184,7 @@ class Cache {
   // @param key   the key for lookup
   //
   // @return write handle for the item if present or null handle.
-  WriteHandle findToWrite(Key key);
+  WriteHandle findToWrite(Key key, bool doNvmInvalidation);
 
   void insertToNVM(WriteHandle& handle) {
     cache_->insertToNVM(handle);
@@ -513,6 +523,12 @@ template <>
 inline typename S3FIFOAllocator::MMConfig makeMMConfig(
     CacheConfig const& config) {
   return S3FIFOAllocator::MMConfig();
+}
+
+template <>
+inline typename BeladyAllocator::MMConfig makeMMConfig(
+    CacheConfig const& config) {
+  return BeladyAllocator::MMConfig();
 }
 
 } // namespace cachebench

@@ -343,7 +343,9 @@ class CacheStressor : public Stressor {
         }
         
         //filter size larger than 4mb
-        if (*(req.sizeBegin) >= maxAllocSize) {
+        if (*(req.sizeBegin) >= maxAllocSize
+          // || *(req.sizeBegin) >= 512 || *(req.sizeBegin) <= 128
+          ) {
           lastRequestId = req.requestId;
           if (req.requestId) {
             // req might be deleted after calling notifyResult()
@@ -368,10 +370,20 @@ class CacheStressor : public Stressor {
         case OpType::kLoneSet:
         case OpType::kSet: {
           if (config_.onlySetIfMiss) {
-            auto it = cache_->find(*key);
+#ifdef TRUE_TTA
+            auto it = cache_->peek(*key);
+            if (it) {
+              it->next_timestamp = req.nextTime;
+            }
+            it = cache_->findToWrite(*key, false);
+#else
+            auto it = cache_->findToWrite(*key, false);
+#endif
+            ++stats.get;
             if (it != nullptr) {
               continue;
             }
+            ++stats.getMiss;
           }
           auto lock = chainedItemAcquireUniqueLock(*key);
           result = setKey(pid, stats, key, *(req.sizeBegin), req.ttlSecs, req.nextTime,
@@ -392,7 +404,18 @@ class CacheStressor : public Stressor {
           // add a distribution over sequences of requests/access patterns
           // e.g. get-no-set and set-no-get
           cache_->recordAccess(*key);
+#ifdef TRUE_TTA
+          auto it_ = cache_->peek(*key);
+          if (it_) {
+            it_->next_timestamp = req.nextTime;
+          }
+          auto it = cache_->findToWrite(*key, false);
+          if (it) {
+            it->next_timestamp = req.nextTime;
+          }
+#else
           auto it = cache_->find(*key);
+#endif
           if (it == nullptr) {
             ++stats.getMiss;
             result = OpResultType::kGetMiss;
@@ -411,9 +434,6 @@ class CacheStressor : public Stressor {
             //** result = OpResultType::kGetMiss;
           //** }
           else {
-#ifdef TRUE_TTA
-            it->next_timestamp = req.nextTime;
-#endif
             result = OpResultType::kGetHit;
           }
           break;
@@ -430,7 +450,7 @@ class CacheStressor : public Stressor {
         case OpType::kAddChained: {
           ++stats.get;
           auto lock = chainedItemAcquireUniqueLock(*key);
-          auto it = cache_->findToWrite(*key);
+          auto it = cache_->findToWrite(*key, true);
           if (!it) {
             ++stats.getMiss;
 
@@ -470,7 +490,7 @@ class CacheStressor : public Stressor {
           if (ticker_) {
             ticker_->updateTimeStamp(req.timestamp);
           }
-          auto it = cache_->findToWrite(*key);
+          auto it = cache_->findToWrite(*key, true);
           if (it == nullptr) {
             ++stats.getMiss;
             ++stats.updateMiss;
@@ -551,11 +571,11 @@ class CacheStressor : public Stressor {
       return OpResultType::kSetFailure;
     }
     else {
-      populateItem(it, itemValue);
-      cache_->insertOrReplace(it);
 #ifdef TRUE_TTA
       it->next_timestamp = nextTime;
 #endif
+      populateItem(it, itemValue);
+      cache_->insertOrReplace(it);
       return OpResultType::kSetSuccess;
     }
   }
