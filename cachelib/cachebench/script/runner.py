@@ -16,11 +16,11 @@ myclient = pymongo.MongoClient(
 mydb = myclient["dongshengyDB"]
 env = "cloudlab"
 if env == "cloudlab":
-    root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/"
-    cachebench_loc_ = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench"
-    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench/cachebench_"
+    root = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_heuristic/"
+    cachebench_loc_ = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_heuristic/build-cachelib/cachebench/cachebench"
+    cachebench_loc = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_heuristic/build-cachelib/cachebench/cachebench_"
     os.system(f"cp {cachebench_loc_} {cachebench_loc}")
-    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_2023/build-cachelib/cachebench"
+    temp_dir = "/proj/lrbplus-PG0/workspaces/yangdsh/CacheLib_heuristic/build-cachelib/cachebench"
 elif env == "cloudlab2":
     root = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/"
     cachebench_loc_ = "/proj/lrbplus-PG0/workspaces/yangdsh/cachelib-sosp23/build-cachelib/cachebench/cachebench"
@@ -61,7 +61,7 @@ def to_task_config(task, task_id):
             if k in task:
                 config['cache_config'][k] = task[k]
         for k in ('numOps', 'numThreads', "wallTimeReplaySpeed", "cacheSetLatency"
-                  , 'mlReqUs', 'admissionThreshold'):
+                  , 'mlReqUs', 'admissionThreshold', 'fixedSize'):
             if k in task:
                 config['test_config'][k] = task[k]
         if 'ampFactor' in task:
@@ -324,6 +324,8 @@ def upload_results(tasks, timestamp):
                 result_dict['numThreads'] = tasks[i]['numThreads']
             if 'admissionThreshold' in tasks[i]:
                 result_dict['admissionThreshold'] = tasks[i]['admissionThreshold']
+            if 'fixedSize' in tasks[i]:
+                result_dict['fixedSize'] = tasks[i]['fixedSize']
             if 'ampFactor' in tasks[i]:
                 result_dict['ampFactor'] = tasks[i]['ampFactor']
         '''with open(f'{temp_dir}/{timestamp}/{i}.stat') as f:

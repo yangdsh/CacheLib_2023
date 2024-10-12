@@ -10,7 +10,7 @@ memc_200m.tr:
     #- 16
     #- 24
     #- 2
-    - 4
+    - 1
     #- 8
     #- 16
     #- 32
@@ -61,11 +61,11 @@ config_kvcache.tr:
     #- 32768
     #- 65536
   numThreads: 
-    - 4
+    - 1
   numOps:
-    - 1000000000
+    - 500000000
   ampFactor:
-    - 10
+    - 1
   json_test_config:
     - cachelib/cachebench/test_configs/config_kvcache.json
 
@@ -161,16 +161,19 @@ fb_follower_fbobj.tr:
 wiki2019_remapped.tr:
   cache_sizes:
     # MB
-    #- 8192
-    #- 16384
-    - 32768
-    - 65536
-    - 131072
-    - 262144
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    #- 32768
+    #- 65536
+    #- 131072
+    #- 262144
     #- 524288
     #- 1048576
   numOps:
-    - 500000000
+    - 200000000
   json_test_config:
     - cachelib/cachebench/test_configs/wiki.json
 
@@ -209,16 +212,15 @@ wiki2019_remapped.tr.4:
 ts_rehash_1b.tr:
   cache_sizes:
     # MB
-    #- 6400
-    #- 12800
-    #- 25600
-    #- 51200
-    #- 102400
+    - 1024
+    - 2048
+    - 4096
+    - 8192
     - 16384
   numOps:
     - 200000000
   json_test_config:
-    - cachelib/cachebench/test_configs/ts_rehash_1b.json
+    - cachelib/cachebench/test_configs/ts.json
 
 ntg1_200m.tr:
   cache_sizes:
@@ -237,17 +239,15 @@ ntg1_200m.tr:
 youtube.tr:
   cache_sizes:
     # MB
-    #- 64
-    #- 12800
-    #- 25600
-    #- 51200
-    #- 102400
-    #- 204800
-    #- 16384
-    - 32768
-    - 65536
-    - 131072
-    - 262144
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    #- 32768
+    #- 65536
+    #- 131072
+    #- 262144
   numOps:
     - 300000000
   json_test_config:
@@ -288,7 +288,9 @@ memc_200m_with_ssd.tr:
     - 5
   admissionThreshold:
     #- 0
-    - 1000000
+    #- 1000000
+    #- 2000000
+    - 10000000
   json_test_config:
     - cachelib/cachebench/test_configs/memc_replay_with_ssd.json
 
@@ -314,9 +316,92 @@ config_kvcache_with_ssd.tr:
     - 5
   admissionThreshold:
     #- 0
-    - 5000000
+    #- 5000000
+    #- 10000000
+    - 50000000
   json_test_config:
     - cachelib/cachebench/test_configs/config_kvcache_with_ssd.json
+
+youtube_with_ssd.tr:
+  cache_sizes:
+    # MB
+    #- 128
+    #- 256
+    - 512
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    #- 32768
+    #- 65536
+  numThreads:
+    - 32
+  numOps:
+    - 500000000
+    #- 4000000000
+  ampFactor:
+    - 5
+  fixedSize:
+    - 2048
+  admissionThreshold:
+    - 0
+  json_test_config:
+    - cachelib/cachebench/test_configs/youtube_with_ssd.json
+
+wiki_with_ssd.tr:
+  cache_sizes:
+    # MB
+    #- 128
+    #- 256
+    #- 512
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    - 16384
+    - 32768
+    #- 65536
+  numThreads:
+    - 32
+  numOps:
+    - 500000000
+    #- 4000000000
+  ampFactor:
+    - 5
+  fixedSize:
+    - 512
+  admissionThreshold:
+    - 0
+  json_test_config:
+    - cachelib/cachebench/test_configs/wiki_with_ssd.json
+
+ts_with_ssd.tr:
+  cache_sizes:
+    # MB
+    #- 128
+    - 256
+    - 512
+    - 1024
+    - 2048
+    - 4096
+    - 8192
+    #- 16384
+    #- 32768
+    #- 65536
+  numThreads:
+    - 32
+  numOps:
+    - 500000000
+    #- 4000000000
+  ampFactor:
+    - 5
+  fixedSize:
+    - 4096
+  admissionThreshold:
+    - 0
+  json_test_config:
+    - cachelib/cachebench/test_configs/ts_with_ssd.json
 
 twitter_7_with_ssd.tr:
   cache_sizes:

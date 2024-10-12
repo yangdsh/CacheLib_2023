@@ -412,11 +412,25 @@ class MMS3FIFO {
       return node.template isFlagSet<RefFlags::kMMFlag2>();
     }
 
+    int main_hit = 0;
+    int p_hit = 0;
     // Bit MM_BIT_1 is used to record if the item has been accessed since
     // being written in cache. Unaccessed items are ignored when determining
     // projected update time.
     void markAccessed(T& node) noexcept {
       node.template setFlag<RefFlags::kMMFlag1>();
+      if (isMain(node)) {
+        main_hit ++;
+      } else if (isProbationary(node)) {
+        p_hit ++;
+      } else {
+        XLOG(INFO) << "node is neither in main or probationary";
+      }
+      if (int(main_hit + p_hit) % 1000000 == 0) {
+        XLOG(INFO) << "hit in main/probationary " << float(main_hit) / p_hit << ' ' << main_hit + p_hit;
+        p_hit = 0;
+        main_hit = 0;
+      }
     }
 
     void unmarkAccessed(T& node) noexcept {

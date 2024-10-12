@@ -28,7 +28,7 @@
     "generator": "replay",
     "replayGeneratorConfig":
     {
-        "ampFactor": 10
+        "ampFactor": 1
     },    
     "repeatTraceReplay": false,
     "repeatOpCount" : false,

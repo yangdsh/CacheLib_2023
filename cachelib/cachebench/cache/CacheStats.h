@@ -453,7 +453,7 @@ struct Stats {
 
       ramHitRatio = invertPctFn(numCacheGetMiss - prevStats.numCacheGetMiss,
                                 numCacheGets - prevStats.numCacheGets);
-      XLOG(INFO) << "miss/get: " << numCacheGetMiss << ' ' << numCacheGets;
+      // XLOG(INFO) << "miss/get: " << numCacheGetMiss << ' ' << numCacheGets;
     }
 
     if (numNvmGets > prevStats.numNvmGets) {

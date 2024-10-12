@@ -1487,8 +1487,8 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
         EvictionController<CacheTrait>* ec = evictionControllers_[pid][cid];
         ec->remove(toRecycle);
       }
-      XLOG_EVERY_MS(INFO, 1000) << "heur fallback/eviction queue/candidate queue:" << n_evict_empty << ' ' <<
-        n_eviction_queue << ' ' << n_reinsertion_queue;
+      // XLOG_EVERY_MS(INFO, 1000) << "heur fallback/eviction queue/candidate queue:" << 
+      // n_evict_empty << ' ' << n_eviction_queue << ' ' << n_reinsertion_queue;
       break;
     }
   //});
@@ -1983,6 +1983,13 @@ void CacheAllocator<CacheTrait>::render() {
 #endif
   std::cout << "parsed requests: " << cacheParsedCnt << '\n';
   std::cout << "interval: " << interval << '\n';
+  auto total_miss = stats_.numCacheGetMiss.get();
+  auto total_get = stats_.numCacheGets.get();
+  std::cout << "miss rate (period): " << (total_miss - prev_miss) / (total_get - prev_get) << '\n';
+  prev_miss = total_miss;
+  prev_get = total_get;
+
+#ifdef DEBUG_ML
   PoolId pid=0;
   const auto& pool = allocator_->getPool(pid);
   const auto& allocSizes = pool.getAllocSizes();
@@ -1996,6 +2003,7 @@ void CacheAllocator<CacheTrait>::render() {
     }
   }
   XLOG(INFO) << "total evicted: " << evicted_total << ' ' << evicted_heur_total;
+#endif
   if (debug_mode < 1) {
     return;
   }

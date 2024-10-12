@@ -31,8 +31,16 @@
 #include <mlpack/methods/linear_regression/linear_regression.hpp>
 #include <Eigen/Dense>
 
-#define FOLLY_XLOG_MIN_LEVEL INFO
-#define LABEL_AS_FEATURE 1
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wbuiltin-macro-redefined"
+#define DEBUG_ML
+// update_tta_bucket
+#ifdef DEBUG_ML
+    #define FOLLY_XLOG_MIN_LEVEL INFO
+#else
+    #define FOLLY_XLOG_MIN_LEVEL ERR
+#endif
+#pragma GCC diagnostic pop
 
 using namespace mlpack;
 using namespace mlpack::ann;
@@ -374,6 +382,7 @@ public:
     Data input_data;
     uint32_t* train_feats;
     int32_t* train_window_idxs;
+    float* train_labels;
     // char lgbm_str[400000];
     int batch_size;
     int belady_boundary_exp;
@@ -400,7 +409,7 @@ public:
         {"num_leaves",       "32"},
         //{"feature_fraction", "0.8"},
         //{"bagging_freq",     "5"},
-        {"bagging_fraction", "0.8"},
+        //{"bagging_fraction", "0.9"},
         {"learning_rate",    "0.1"},
         {"verbosity",        "-1"},
         {"force_row_wise",   "true"}
@@ -467,13 +476,14 @@ public:
         init_with_params(params);
         train_feats = new uint32_t[batch_size];
         train_window_idxs = new int32_t[batch_size];
-        input_data.labels.reserve(batch_size);
+        train_labels = new float[batch_size];
         input_data.indptr.emplace_back(0);
     }
 
     ~LightGBM() {
         delete[] train_feats;
         delete[] train_window_idxs;
+        delete[] train_labels;
     }
 
     void* get_model() {
@@ -510,7 +520,7 @@ public:
     int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
         train_feats[n_in_batch] = access_in_windows;
         train_window_idxs[n_in_batch] = window_idx;
-        input_data.labels.push_back(future_interval);
+        train_labels[n_in_batch] = future_interval;
         n_in_batch ++;
         return 0;
     }
@@ -530,6 +540,10 @@ public:
     }
     
     bool train() {
+        if (n_in_batch == 0) {
+            XLOG(INFO) << "train empty";
+            return 0;
+        }
         auto timeBegin = std::chrono::system_clock::now();
         std::string param_str;
         for (auto it = training_params.cbegin(); it != training_params.cend(); it++) {
@@ -549,7 +563,8 @@ public:
                     avg_label ++;
                 }
             }
-            input_data.indptr.push_back(counter);
+            input_data.indptr.emplace_back(counter);
+            input_data.labels.emplace_back(train_labels[i]);
         }
 
         // create training dataset
@@ -593,7 +608,8 @@ public:
             LGBM_BoosterSaveModel(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, "model.txt");
         }
         */
-        if (input_data.labels.size() >= 130000 && debug_mode >= 2) {
+#ifdef DEBUG_ML
+        if (input_data.labels.size() >= 130000) {
             cout << "label distribution: " << endl;
             clear_tta();
             get_dist<float>(input_data.labels);
@@ -603,6 +619,7 @@ public:
             get_dist<double>(scores);
             info(1);
         }
+#endif
         LGBM_DatasetFree(trainData);
         XLOG_EVERY_MS(INFO, 1000) << "<train size=" <<  n_in_batch
             << "> number of 1s in feats: " << avg_label / n_in_batch;
@@ -627,6 +644,10 @@ public:
         bucket_idx = bucket_idx > 0 ? bucket_idx : 0;
         tta_bucket[bucket_idx] ++;
         if (tta_feat[bucket_idx] == 0) {
+            bitset<32> w(train_feats[idx]);
+            //if (w[train_window_idxs[idx] % feature_cnt] == 1 && train_labels[idx] > 1e7)
+            //    cout << "wrong " << w << ' ' << train_window_idxs[idx] % feature_cnt
+            //        << ' ' << train_labels[idx] << endl;
             tta_feat[bucket_idx] = rotate_left<uint32_t>(train_feats[idx],
                 31 - (train_window_idxs[idx] % feature_cnt));
         }
@@ -851,6 +872,14 @@ class EvictionController {
             }
             if (it.first == "use_rpe_oracle") {
                 use_rpe_oracle = stoi(it.second);
+                if (use_rpe_oracle) {
+                    cout << "# when use_rpe_oracle is in used, ";
+                    cout << "need to set next timestamp when get items in the stressor, ";
+                    cout << "and disable nvme" << endl;
+                }
+            }
+            if (it.first == "label_in_feature") {
+                label_in_feature = stoi(it.second);
             }
             if (it.first == "freq_scaling") {
                 freq_scaling = stof(it.second);
@@ -909,12 +938,12 @@ class EvictionController {
             << " train: " << training_batch_cnt
             << " neg:" << neg_cnt
             << std::endl;
-        /*if (cid == 1) {
+        if (cid == 1) {
             for (auto bb: beladyBoundaries) {
                 cout << bb << ' ';
             }
             cout << endl << endl;
-        }*/
+        }
     }
 
     void prediction_worker() {
@@ -957,12 +986,23 @@ class EvictionController {
                     break;
                 }
                 int window_idx = item->get_past_timestamp() / window_size;
-                bitset<32> w(item->access_in_windows);
-#ifdef LABEL_AS_FEATURE
-                if (item->next_timestamp - current_timestamp_global / time_unit > 1e7 && heuristic_aided == 4)
-                    w[window_idx] = 0;
-#endif
-                prediction_model->emplace_back(w.to_ulong(), window_idx);
+
+                uint32_t feat = item->access_in_windows;
+                if (label_in_feature) {
+                    bitset<32> w(item->access_in_windows);
+                    if (label_in_feature > 1)
+                        w.reset();
+                    // w[window_idx % feature_cnt] = 0;
+                    float th[10] = {1e3, 1e4, 3e4, 1e5, 3e5, 1e6, 3e6, 1e7, 1e8, 1e9};
+                    for (int k = 0; k < 10; k ++)
+                        if (item->next_timestamp - item->get_past_timestamp() > th[k])
+                            w[(window_idx + k + 1) % feature_cnt] = 0;
+                        else
+                            w[(window_idx + k + 1) % feature_cnt] = 1;
+                    feat = w.to_ulong();
+                }
+
+                prediction_model->emplace_back(feat, window_idx);
             }
             build_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now() - timeBegin).count();
@@ -978,11 +1018,13 @@ class EvictionController {
                 //avg_score += TTA / scores.size();
                 // a hack to retrieve local time temporarily
                 int32_t item_logical_time = logical_time;
-                if (TTA > item_logical_time - past_timestamp)
-                    TTA = TTA - (item_logical_time - past_timestamp);
+                int32_t passed_time = item_logical_time - past_timestamp;
+                if (label_in_feature || heuristic_mode == 4)
+                    passed_time = current_timestamp_global / time_unit - past_timestamp;
+                if (TTA > passed_time)
+                    TTA = TTA - passed_time;
                 else
-                    TTA = (item_logical_time - past_timestamp - TTA)
-                        * TTA_diff_scaling;
+                    TTA = (passed_time - TTA) * TTA_diff_scaling;
 
                 bool to_reinsert = 0;
                 if (rpe_target == 0) {
@@ -1025,10 +1067,10 @@ class EvictionController {
                     }
                     
                     if (heuristic_aided == 4) {
-                        if (items_for_prediction[i]->next_timestamp > current_timestamp_global / time_unit) {
+                        if (items_for_prediction[i]->next_timestamp > items_for_prediction[i]->get_past_timestamp()) {
                             neg_cnt ++;
                             _generateTrainingData(items_for_prediction[i], 
-                                items_for_prediction[i]->next_timestamp - current_timestamp_global / time_unit);
+                                items_for_prediction[i]->next_timestamp - items_for_prediction[i]->get_past_timestamp());
                         } else if (items_for_prediction[i]->next_timestamp == 0) {
                             XLOG_EVERY_MS(INFO, 100) << cid << ' ' << items_for_prediction[i]->next_timestamp
                                 << ' ' << current_timestamp_global << ' ' << items_for_prediction[i]->getKey();
@@ -1166,7 +1208,8 @@ class EvictionController {
     void adjust_threshold_oracle() {
         std::unique_lock lock(oracle_mutex_);
         threshold = top2node.begin()->first - current_timestamp_global / time_unit;
-/*        int cnt = 0;
+/*
+        int cnt = 0;
         auto it = rank2node.rbegin();
         for (; cnt < rank2node.size() / (1+rpe_target); cnt ++, it ++);
         XLOG_EVERY_MS(INFO, 1000) << threshold << ' ' << it->first - current_timestamp_global / time_unit;
@@ -1178,7 +1221,7 @@ class EvictionController {
         if (use_rpe_running_average || use_rpe_oracle) {
             return;
         }
-        int bucket_idx = MLModel::my_faster_logf(tta / 100, 1.2);
+        int bucket_idx = MLModel::my_faster_logf(tta / 100, 1.2) - 1;
         if (bucket_idx < 0) {
             bucket_idx = 0;
         }
@@ -1205,7 +1248,7 @@ class EvictionController {
                     threshold *= (1 
                         + 0.2 * (num_below_threshold - (sum-tta_bucket[i])) / tta_bucket[i]);
             }
-            tta_bucket[i] *= (1 - (float)prediction_batch_size / window_size);
+            tta_bucket[i] *= (1 - threshold_changing_rate/1e-4 * (float)prediction_batch_size / window_size);
         }
     }
 
@@ -1288,9 +1331,19 @@ class EvictionController {
     void recordAccess(Item* item, bool enable_training) {
         if (!use_eviction_control || evict_all_mode)
             return;
+#ifdef DEBUG_ML
+        if (++logical_time % 10000 == 0) {
+            if (cid == 1) {
+                std::unique_lock lock(oracle_mutex_);
+                beladyBoundaries.push_back(threshold);
+            }
+        }
+#else
+        logical_time++;
+#endif
         uint32_t current_time;
         if (use_logical_clock) {
-            current_time = logical_time++; //.fetch_add(1, std::memory_order_relaxed);
+            current_time = logical_time; //.fetch_add(1, std::memory_order_relaxed);
             current_time = current_time - (current_time&15);
         } else {
             current_time = util::getCurrentTimeSec();
@@ -1298,14 +1351,6 @@ class EvictionController {
         if (window_size != 0) {
             if (use_rpe_oracle)
                 adjust_threshold_oracle();
-            if (logical_time % (window_size/ 10) == 0) {
-                /*
-                if (cid == 1) {
-                    std::unique_lock lock(oracle_mutex_);
-                    beladyBoundaries.push_back(threshold);
-                }
-                */
-            }
             if (enable_training) {
                _generateTrainingData(item, current_time - item->get_past_timestamp());
             }
@@ -1336,6 +1381,9 @@ class EvictionController {
             item->access_in_windows = 0;
         }
         item->set_past_timestamp(current_time);
+        if (label_in_feature || heuristic_mode == 4) {
+            item->set_past_timestamp(current_timestamp_global / time_unit);
+        }
         if (use_rpe_oracle)
             addTrueTTA(item);
     }
@@ -1356,13 +1404,25 @@ class EvictionController {
             item->set_is_sampled(0);
             uint32_t sample_time = item->get_past_timestamp();
 
-            bitset<32> w(item->access_in_windows);
+            uint32_t feat = item->access_in_windows;
             int window_idx = sample_time / window_size;
-#ifdef LABEL_AS_FEATURE
-            if (tta_label > 1e7 && heuristic_aided == 4)
-                w[window_idx] = 0;
-#endif
-            training_model->emplace_back_training_sample(w.to_ulong(), window_idx, tta_label);
+
+            if (label_in_feature) {
+                bitset<32> w(item->access_in_windows);
+                tta_label = item->next_timestamp - item->get_past_timestamp();
+                if (label_in_feature > 1)
+                    w.reset();
+                // w[window_idx % feature_cnt] = 0;
+                float th[10] = {1e3, 1e4, 3e4, 1e5, 3e5, 1e6, 3e6, 1e7, 1e8, 1e9};
+                for (int k = 0; k < 10; k ++)
+                    if (tta_label > th[k])
+                        w[(window_idx + k + 1) % feature_cnt] = 0;
+                    else
+                        w[(window_idx + k + 1) % feature_cnt] = 1;
+                feat = w.to_ulong();
+            }
+
+            training_model->emplace_back_training_sample(feat, window_idx, tta_label);
             training_batch_cnt += 1;
             maybe_train();
             generate_in_progress.clear();
@@ -1429,13 +1489,14 @@ class EvictionController {
         for (int i = 0; i <= 99; i ++)
             tta_bucket[i] *= 0.1;
         prediction_model->delete_model();
-        XLOG(INFO) << cid << " is trained" << endl;
+        // XLOG(INFO) << cid << " is trained";
         prediction_model->set_model(temp_training_model->get_model());
     }
 
     // parameters
     map<string, string> params;
     int debug_mode = 0;
+    int label_in_feature = 0;
     int model_type = 0;
     bool use_fifo = 0;
     int process_id = -1;

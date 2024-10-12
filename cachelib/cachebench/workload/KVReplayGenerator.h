@@ -299,7 +299,7 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   if (config_.admissionThreshold != 0 &&
       req->req_.nextTime > parseError + parseSuccess + config_.admissionThreshold)
     return false;
-  XLOG_EVERY_MS(INFO, 1000) << "parse success and error: " << parseSuccess << ' ' << parseError;
+  // XLOG_EVERY_MS(INFO, 1000) << "parse success and error: " << parseSuccess << ' ' << parseError;
   return true;
 }
 

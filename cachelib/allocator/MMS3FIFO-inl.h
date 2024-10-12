@@ -39,9 +39,9 @@ bool MMS3FIFO::Container<T, HookPtr>::recordAccess(T& node,
   const auto curr = static_cast<Time>(util::getCurrentTimeSec());
   // check if the node is still being memory managed
   if (node.isInMMContainer()) {
-    if (!isAccessed(node)) {
+    // if (!isAccessed(node)) {
       markAccessed(node);
-    }
+    // }
     setUpdateTime(node, curr);
 
     // auto func = [this, &node, curr]() {

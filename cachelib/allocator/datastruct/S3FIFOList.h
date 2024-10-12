@@ -117,6 +117,7 @@ class S3FIFOList {
     candidate_from_pfifo_evict = mode & 2;
     candidate_from_mfifo_promote = mode & 4;
     candidate_from_mfifo_evict = mode & 8;
+    candidate_from_add = mode & 16;
   }
   
   void getCandidates(T** nodeList, T** evictList, int& length, int& evictLength) noexcept {
@@ -288,7 +289,8 @@ class S3FIFOList {
   }
 
   void add(T& node) noexcept {
-    if (hist_.initialized() && hist_.contains(hashNode(node))) {
+    auto is_warm = hist_.initialized() && hist_.contains(hashNode(node));
+    if (is_warm && !candidate_from_add) {
       mfifo_->linkAtHead(node);
       markMain(node);
       unmarkProbationary(node);
@@ -301,6 +303,9 @@ class S3FIFOList {
       unmarkMain(node);
       insert_to_pfifo += 1;
       node.set_is_reinserted(0);
+      if (candidate_from_add && is_warm) {
+        markAccessed(node);
+      }
       /*
       if (cid == 4)
         XLOG_EVERY_MS(INFO, 1000) << "<cid=" << cid << "> insert to p/m: " << insert_to_pfifo << ' ' << insert_to_mfifo;
@@ -344,6 +349,10 @@ class S3FIFOList {
     return node.template isFlagSet<RefFlags::kMMFlag2>();
   }
 
+  void markAccessed(T& node) noexcept {
+    node.template setFlag<RefFlags::kMMFlag1>();
+  }
+
  private:
   static uint32_t hashNode(const T& node) noexcept {
     return static_cast<uint32_t>(
@@ -372,6 +381,7 @@ class S3FIFOList {
   bool candidate_from_pfifo_evict = 0;
   bool candidate_from_mfifo_promote = 0;
   bool candidate_from_mfifo_evict = 0;
+  bool candidate_from_add = 0;
   bool EC_mode = 0;
 };
 } // namespace cachelib

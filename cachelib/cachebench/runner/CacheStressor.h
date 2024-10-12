@@ -341,6 +341,10 @@ class CacheStressor : public Stressor {
         if (cacheType == "S3FIFO") {
           *(req.sizeBegin) += 8;
         }
+
+        if (config_.fixedSize) {
+          *(req.sizeBegin) = config_.fixedSize;
+        }
         
         //filter size larger than 4mb
         if (*(req.sizeBegin) >= maxAllocSize
@@ -370,15 +374,8 @@ class CacheStressor : public Stressor {
         case OpType::kLoneSet:
         case OpType::kSet: {
           if (config_.onlySetIfMiss) {
-#ifdef TRUE_TTA
-            auto it = cache_->peek(*key);
-            if (it) {
-              it->next_timestamp = req.nextTime;
-            }
-            it = cache_->findToWrite(*key, false);
-#else
+            XLOG_EVERY_MS(ERR, 10000) << "warning: updateOnWrite and next_timestamp";
             auto it = cache_->findToWrite(*key, false);
-#endif
             ++stats.get;
             if (it != nullptr) {
               continue;
@@ -405,10 +402,12 @@ class CacheStressor : public Stressor {
           // e.g. get-no-set and set-no-get
           cache_->recordAccess(*key);
 #ifdef TRUE_TTA
+          XLOG_EVERY_MS(ERR, 10000) << "warning: additional peek()";
           auto it_ = cache_->peek(*key);
           if (it_) {
             it_->next_timestamp = req.nextTime;
           }
+          // need to set next_t before markUseful when use_oracle_rpe
           auto it = cache_->findToWrite(*key, false);
           if (it) {
             it->next_timestamp = req.nextTime;

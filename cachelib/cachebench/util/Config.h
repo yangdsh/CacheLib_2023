@@ -269,6 +269,8 @@ struct StressorConfig : public JSONConfig {
 
   double admissionThreshold{0};
 
+  uint64_t fixedSize{0};
+
   bool useCombinedLockForIterators{false};
 
   double allocFactor{1.5};

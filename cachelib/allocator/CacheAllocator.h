@@ -2128,6 +2128,8 @@ class CacheAllocator : public CacheBase {
   uint32_t from_head_cnt = 0;
   uint32_t from_tail_cnt = 0;
   uint64_t total_miss = 0;
+  double prev_get = 0;
+  double prev_miss = 0;
   std::atomic<uint32_t> n_miss = 0;
   // a filter per pool per class to decide whether an eviction candidate should be reinserted
   std::vector<std::vector<EvictionController<CacheTrait>*>> evictionControllers_;
