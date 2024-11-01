@@ -1,0 +1,40 @@
+{
+    "cache_config": {
+      "allocator": "S3FIFO",
+      "cacheSizeMB": 1024, 
+      "useEvictionControl": true,
+      "MLConfig": "batch_size_factor,1,window_size_factor,1,debug_mode,1,force_run,0,use_eviction_control,1,num_iterations,16,num_leaves,16,rpe_target,1,async_mode,1,meta_update_ssd,1,heuristic_mode,8,use_fewer_extra_feat,0,heuristic_aided,0",
+      "poolRebalanceIntervalSec" : 0,
+      "moveOnSlabRelease" : true,
+      "rebalanceMinSlabs" : 2,
+      "rebalanceStrategy": "hits",
+      "lruRefreshSec_": 0,
+      "lruRefreshRatio_": 0,
+      "nvmCachePaths": [
+        "/dev/nvme1n1"
+      ],
+      "nvmCacheSizeMB": 0,
+      "navyReaderThreads": 64,
+      "navyWriterThreads": 64,
+      "NavyBigHashSizePct": 0,
+      "NavyBlockSize": 4096,
+      "NavyParcelMemoryMB": 5760
+    }, 
+    "test_config":
+    {
+      "enableLookaside": true,
+      "opRatePerSec_": 25000000,
+      "generator": "replay",
+      "cachePieceSize": 4194304,
+      "numOps": 50000000,
+      "numThreads": 1,
+      "populateItem": true,
+      "fixedSize": 4096,
+      "traceFileName_cloudlab": "/nfs/pageviews-202406.tr",
+      "traceFileName": "/nfs/pageviews-202406.tr",
+      "replayGeneratorConfig":
+      {
+          "ampFactor": 1
+      }
+    }
+}

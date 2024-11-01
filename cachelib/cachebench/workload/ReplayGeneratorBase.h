@@ -87,11 +87,7 @@ class TraceFileStream {
 
   bool setNextLine(const std::string& line) {
     nextLineFields_.clear();
-    folly::split(",", line, nextLineFields_);
-    if (nextLineFields_.size() < minNumFields_) {
-      nextLineFields_.clear();
-      folly::split(' ', line, nextLineFields_);
-    }
+    folly::split(diliminator, line, nextLineFields_);
     if (nextLineFields_.size() < minNumFields_) {
       XLOG_N_PER_MS(INFO, 10, 1000) << folly::sformat(
           "Error parsing next line \"{}\": shorter than min required fields {}",
@@ -132,11 +128,9 @@ class TraceFileStream {
 
     bool valid = false;
     keys_.clear();
-    folly::split(',', header, keys_);
-    if (keys_.size() == 1) {
-      keys_.clear();
-      folly::split(',', "next,op_time,key,size,type", keys_);
-    }
+    folly::split(',', "next,op_time,key,size,extra_feat", keys_);
+    diliminator = ' ';
+
     for (size_t i = 0; i < keys_.size(); i++) {
       if (columnMap_.find(keys_[i]) == columnMap_.end()) {
         continue;
@@ -254,6 +248,8 @@ class TraceFileStream {
 
   // minNumFields_ is the minimum number of fields required
   size_t minNumFields_ = 0;
+
+  char diliminator = ',';
 
   std::vector<std::string> infileNames_;
   size_t nextInfileIdx_ = 0;

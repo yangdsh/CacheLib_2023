@@ -84,6 +84,7 @@ class KVReplayGenerator : public ReplayGeneratorBase {
     OP_TIME,
     CACHE_HIT,
     NEXT,
+    EXTRA_FEAT,
     END
   };
 
@@ -91,11 +92,12 @@ class KVReplayGenerator : public ReplayGeneratorBase {
       {SampleFields::OP_TIME, false, {"op_time"}},
       {SampleFields::KEY, true, {"key"}}, /* required */
       {SampleFields::KEY_SIZE, false, {"key_size"}},
-      {SampleFields::OP, false, {"op"}}, /* required */
+      {SampleFields::OP, false, {"op"}},
       {SampleFields::OP_COUNT, false, {"op_count"}},
       {SampleFields::SIZE, true, {"size"}}, /* required */
       {SampleFields::CACHE_HIT, false, {"cache_hits"}},
       {SampleFields::NEXT, false, {"next"}},
+      {SampleFields::EXTRA_FEAT, false, {"extra_feat"}},
       {SampleFields::TTL, false, {"ttl"}}};
 
   explicit KVReplayGenerator(const StressorConfig& config)
@@ -294,6 +296,13 @@ inline bool KVReplayGenerator::parseRequest(const std::string& line,
   // Set TTL (optional)
   auto ttlField = traceStream_.template getField<size_t>(SampleFields::TTL);
   req->req_.ttlSecs = ttlField.value_or(0);
+
+  //set FEAT
+  auto extraFeatField = traceStream_.template getField<std::string>(SampleFields::EXTRA_FEAT);
+  if (extraFeatField.has_value())
+    req->req_.admFeatureMap["extra_feat"] = extraFeatField.value_or("");
+
+  //set nextTime
   auto nextTimeField = traceStream_.template getField<size_t>(SampleFields::NEXT);
   req->req_.nextTime = nextTimeField.value_or(0);
   if (config_.admissionThreshold != 0 &&

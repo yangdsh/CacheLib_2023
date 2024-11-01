@@ -419,6 +419,8 @@ class CACHELIB_PACKED_ATTR CacheItem {
 #ifdef TRUE_TTA
   mutable uint32_t next_timestamp = 0;
 #endif
+  char extra_feat[256];
+
   bool get_is_sampled() {
     return past_timestamp & 1;
   }

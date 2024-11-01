@@ -19,6 +19,7 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/serialization/vector.hpp>
 #include <folly/system/ThreadName.h>
+#include <folly/String.h>
 #include <sys/syscall.h> 
 #include <sys/resource.h>
 #include "cachelib/common/concurrentqueue.h"
@@ -33,13 +34,9 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wbuiltin-macro-redefined"
-#define DEBUG_ML
-// update_tta_bucket
-#ifdef DEBUG_ML
-    #define FOLLY_XLOG_MIN_LEVEL INFO
-#else
-    #define FOLLY_XLOG_MIN_LEVEL ERR
-#endif
+#define DEBUG_KEY "null"
+#undef DEBUG_ML
+#define FOLLY_XLOG_MIN_LEVEL INFO
 #pragma GCC diagnostic pop
 
 using namespace mlpack;
@@ -58,6 +55,7 @@ class MLModel {
 public:
     int n_in_batch = 0;
     bool for_training = false;
+    int window_cnt = 32;
     int feature_cnt = 32;
 
     static float my_faster_logf (float val)
@@ -77,15 +75,36 @@ public:
         // return 31 - __builtin_clz(uint32_t(x));
     }
 
+    void normalizeRange(std::vector<float>& vec, int start, int end) {
+    // Input validation: Ensure start and end are within bounds
+        if (start < 0 || end >= vec.size() || start > end) {
+            return;
+        }
+
+        // Find the maximum value in the specified range
+        auto maxIt = std::max_element(vec.begin() + start, vec.begin() + end + 1);
+        double maxVal = *maxIt;
+
+        // Avoid division by zero if maxVal is 0 (all elements would be 0)
+        if (maxVal == 0) {
+            return;
+        }
+
+        // Normalize the values in the range, assuming minVal is 0
+        for (int i = start; i <= end; ++i) {
+            vec[i] = vec[i] / maxVal;
+        }
+    }
+
     virtual void* get_model() =0;
 
     virtual vector<double> get_model_importances() =0;
 
     virtual int set_model(void* model) =0;
 
-    virtual int emplace_back_training_sample(uint32_t, int window_idx, uint32_t future_interval) =0;
+    virtual int emplace_back_training_sample(uint32_t, int window_idx, const char* extra_feat_, uint32_t future_interval) =0;
 
-    virtual void emplace_back(uint32_t, int window_idx) =0;
+    virtual void emplace_back(uint32_t, int window_idx, const char* extra_feat_) =0;
 
     virtual bool train() =0;
 
@@ -240,7 +259,7 @@ public:
         return vector<double>();
     }
 
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
+    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, const char* extra_feat_, uint32_t future_interval) {
         vector<double> x;
         std::bitset<32> feats(access_in_windows);
         for (int j = window_idx; j > window_idx - feature_cnt; --j) {
@@ -256,8 +275,8 @@ public:
         return 1;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
-        emplace_back_training_sample(access_in_windows, window_idx, 0);
+    void emplace_back(uint32_t access_in_windows, int window_idx, const char* extra_feat_) {
+        emplace_back_training_sample(access_in_windows, window_idx, extra_feat_, 0);
     }
 };
 
@@ -273,18 +292,13 @@ public:
     void init_with_params(const std::map<std::string, std::string> &params) {
         for (auto &it: params) {
             if (it.first == "window_cnt") {
-                feature_cnt = stoi(it.second);
+                window_cnt = stoi(it.second);
             }
         }
     }
 
     DNN(const std::map<std::string, std::string> &params) {
         init_with_params(params);
-        model = new FFN<mlpack::ann::MeanSquaredError<>, mlpack::ann::RandomInitialization>();
-        model->Add<Linear<> >(feature_cnt, 64);
-        model->Add<BatchNorm<> >(64);
-        model->Add<ReLULayer<> >();
-        model->Add<Linear<> >(64, 1);
     }
 
     float info(bool to_print) {
@@ -309,7 +323,21 @@ public:
         return 0;
     };
 
+    void init_model() {
+        model = new FFN<mlpack::ann::MeanSquaredError<>, mlpack::ann::RandomInitialization>();
+        model->Add<Linear<> >(feature_cnt, 256);
+        model->Add<BatchNorm<> >(256);
+        model->Add<ReLULayer<> >();
+        model->Add<Linear<> >(256, 128);
+        model->Add<BatchNorm<> >(128);
+        model->Add<ReLULayer<> >();
+        model->Add<Linear<> >(128, 1);
+    }
+
     bool train() {
+        if (model == NULL) {
+            init_model();
+        }
         mat mat_x = conv_to<mat>::from(vec_x);
         mat_x.reshape(feature_cnt, n_in_batch);
         mat mat_y = conv_to<vec>::from(vec_y);
@@ -321,7 +349,10 @@ public:
         return 1;
     }
 
-    vector<double> predict(int mode) {      
+    vector<double> predict(int mode) {    
+        if (model == NULL) {
+            init_model();
+        }
         mat mat_x = conv_to<mat>::from(vec_x);
         mat_x.reshape(feature_cnt, n_in_batch);
         rowvec predictions;
@@ -337,15 +368,30 @@ public:
         vec_y.clear();
     }
     
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
-        vector<double> x;
+    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, const char* extra_feat_, uint32_t future_interval) {
+        vector<float> x;
         std::bitset<32> feats(access_in_windows);
-        for (int j = window_idx; j > window_idx - feature_cnt; --j) {
+        for (int j = window_idx; j > window_idx - window_cnt; --j) {
             if (j >= 0) {
-                x.emplace_back(feats[j % feature_cnt]);
+                x.emplace_back(feats[j % window_cnt]);
             } else {
                 x.emplace_back(0);
             }
+        }
+        string extra_feat(extra_feat_);
+        vector<string> extra_feats;
+        folly::split(',', extra_feat, extra_feats);
+        if (extra_feat.size() > 0) {
+            if (feature_cnt != extra_feats.size() + window_cnt) {
+                feature_cnt = extra_feats.size() + window_cnt;
+            }
+            for(int i = 0; i < feature_cnt - window_cnt; i ++) {
+                if (extra_feats[i][0] >= 'A' && extra_feats[i][0] <= 'Z')
+                    x.emplace_back(0);
+                else
+                    x.emplace_back(stoi(extra_feats[i]));
+            }
+            normalizeRange(x, window_cnt + 5, window_cnt + 35);
         }
         
         vec_x.insert(vec_x.end(), x.begin(), x.end());
@@ -354,8 +400,8 @@ public:
         return 1;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
-        emplace_back_training_sample(access_in_windows, window_idx, 0);
+    void emplace_back(uint32_t access_in_windows, int window_idx, const char* extra_feat_) {
+        emplace_back_training_sample(access_in_windows, window_idx, extra_feat_, 0);
     }
 
 
@@ -381,6 +427,7 @@ public:
     };
     Data input_data;
     uint32_t* train_feats;
+    string* train_extra_feats;
     int32_t* train_window_idxs;
     float* train_labels;
     // char lgbm_str[400000];
@@ -393,6 +440,7 @@ public:
     bool only_use_edc = false;
     bool save_to_file = false;
     int debug_mode = 0;
+    int use_fewer_extra_feat = 0;
 
     default_random_engine _generator = default_random_engine();
     uniform_int_distribution<std::size_t> _distribution = uniform_int_distribution<std::size_t>();
@@ -453,18 +501,12 @@ public:
                 save_to_file = stoi(it.second);
             }
             if (it.first == "window_cnt") {
-                feature_cnt = stoi(it.second);
+                window_cnt = stoi(it.second);
+            }
+            if (it.first == "use_fewer_extra_feat") {
+                use_fewer_extra_feat = stoi(it.second);
             }
         }
-        // cout << "ML config: " << int(n_deltas) << endl;
-
-        /*if (n_extra_fields) {
-            string categorical_feature = to_string(n_deltas + 1);
-            for (uint i = 0; i < n_extra_fields - 1; ++i) {
-                categorical_feature += "," + to_string(n_deltas + 2 + i);
-            }
-            training_params["categorical_feature"] = categorical_feature;
-        }*/
         inference_params = training_params;
         // can set number of threads, however the inference time will increase a lot (2x~3x)
         inference_params["num_threads"] = inference_threads;
@@ -475,6 +517,7 @@ public:
     LightGBM(map<string, string> &params) {
         init_with_params(params);
         train_feats = new uint32_t[batch_size];
+        train_extra_feats = new string[batch_size];
         train_window_idxs = new int32_t[batch_size];
         train_labels = new float[batch_size];
         input_data.indptr.emplace_back(0);
@@ -482,6 +525,7 @@ public:
 
     ~LightGBM() {
         delete[] train_feats;
+        delete[] train_extra_feats;
         delete[] train_window_idxs;
         delete[] train_labels;
     }
@@ -517,23 +561,45 @@ public:
         return importances;
     }
 
-    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, uint32_t future_interval) {
+    int emplace_back_training_sample(uint32_t access_in_windows, int window_idx, const char* extra_feat_, uint32_t future_interval) {
         train_feats[n_in_batch] = access_in_windows;
+        train_extra_feats[n_in_batch] = std::string(extra_feat_);
         train_window_idxs[n_in_batch] = window_idx;
         train_labels[n_in_batch] = future_interval;
         n_in_batch ++;
         return 0;
     }
 
-    void emplace_back(uint32_t access_in_windows, int window_idx) {
+    void emplace_back(uint32_t access_in_windows, int window_idx, const char* extra_feat_) {
         std::bitset<32> feats(access_in_windows);
         int32_t counter = input_data.indptr.back();
-        for (int j = window_idx; j > window_idx - feature_cnt && j >= 0; --j) {
-            if (feats[j % feature_cnt]) {
+        for (int j = window_idx; j > window_idx - window_cnt && j >= 0; --j) {
+            if (feats[j % window_cnt]) {
                 input_data.data.emplace_back(1);
                 input_data.indices.emplace_back(window_idx - j);
                 counter ++;
             }
+        }
+        string extra_feat(extra_feat_);
+        vector<string> extra_feats;
+        folly::split(',', extra_feat, extra_feats);
+        if (extra_feat.size() > 0) {
+            if (feature_cnt != extra_feats.size() + window_cnt - use_fewer_extra_feat) {
+                feature_cnt = extra_feats.size() + window_cnt - use_fewer_extra_feat;
+                string categorical_feature = to_string(window_cnt);
+                for (int i = window_cnt + 1; i < feature_cnt; i ++)
+                    categorical_feature += "," + to_string(i);
+                training_params["categorical_feature"] = categorical_feature;
+            }
+            for(int i = 0; i < feature_cnt - use_fewer_extra_feat - window_cnt; i ++) {
+                if (extra_feats[i][0] >= 'A' && extra_feats[i][0] <= 'Z')
+                    input_data.data.emplace_back(extra_feats[i][0] - 'A');
+                else
+                    input_data.data.emplace_back(stoi(extra_feats[i]));
+                input_data.indices.emplace_back(window_cnt + extra_feats.size()-1-i);
+                counter ++;
+            }
+            normalizeRange(input_data.data, input_data.indptr.back() + window_cnt + 5, input_data.indptr.back() + window_cnt + 35);
         }
         input_data.indptr.push_back(counter);
         n_in_batch ++;
@@ -551,19 +617,10 @@ public:
         }
         int32_t counter = input_data.indptr.back();
         for (int i = 0; i < n_in_batch; i ++) {
-            std::bitset<32> feats(train_feats[i]);
-            //if (feats[train_window_idxs[i] % feature_cnt] == 0 && train_feats[i] != 0) {
-            //    XLOG(INFO) << feats << ' ' << train_window_idxs[i];
-            //}
-            for (int j = train_window_idxs[i]; j > train_window_idxs[i] - feature_cnt && j >= 0; --j) {
-                if (feats[j % feature_cnt]) {
-                    input_data.data.emplace_back(1);
-                    input_data.indices.emplace_back(train_window_idxs[i] - j);
-                    counter ++;
-                    avg_label ++;
-                }
-            }
-            input_data.indptr.emplace_back(counter);
+            if (!train_extra_feats[i].c_str())
+                XLOG(INFO) << i;
+            emplace_back(train_feats[i], train_window_idxs[i], train_extra_feats[i].c_str());
+            n_in_batch --;
             input_data.labels.emplace_back(train_labels[i]);
         }
 
@@ -608,6 +665,7 @@ public:
             LGBM_BoosterSaveModel(booster, 0, 0, C_API_FEATURE_IMPORTANCE_SPLIT, "model.txt");
         }
         */
+        info(1);
 #ifdef DEBUG_ML
         if (input_data.labels.size() >= 130000) {
             cout << "label distribution: " << endl;
@@ -617,7 +675,6 @@ public:
             cout << "run label distribution: " << endl;
             auto scores = predict(0);
             get_dist<double>(scores);
-            info(1);
         }
 #endif
         LGBM_DatasetFree(trainData);
@@ -697,7 +754,6 @@ public:
             cout << i << ' ' << importances[i] << endl;
             sum += importances[i];
         }
-        clear();
         return sum;
     }
 
@@ -800,9 +856,6 @@ class EvictionController {
             if (it.first == "evict_all_mode") {
                 evict_all_mode = stoi(it.second);
             }
-            if (it.first == "force_run") {
-                force_run = stoi(it.second);
-            }
             if (it.first == "batch_size_factor") {
                 batch_size_factor = stof(it.second);
             }
@@ -846,7 +899,6 @@ class EvictionController {
                 use_admission_threshold = static_cast<bool>(stoi(it.second));
             }
             if (it.first == "training_batch_size") {
-                training_batch_size = stoi(it.second);
                 max_batch_size = stoi(it.second);
             }
             if (it.first == "prediction_batch_size") {
@@ -915,9 +967,8 @@ class EvictionController {
             prediction_threads.push_back(
                 std::thread(&EvictionController::prediction_worker, this));
         }
-        params["batch_size"] = to_string(training_batch_size);
-        training_model = build_ml_model();
-        training_model->for_training = true;
+        // params["batch_size"] = to_string(training_batch_size);
+        // training_model = build_ml_model();
         // std::cout << "done make EC: " << MLConfig << std::endl;
     }
 
@@ -967,6 +1018,10 @@ class EvictionController {
             int cnt = candidate_queue.try_dequeue_bulk(items_for_prediction, prediction_batch_size);
             if (cnt == 0)
                 continue;
+            if (cnt > prediction_batch_size) {
+                XLOG_EVERY_MS(INFO, 1000) << "dequeue cnt: " << cnt;
+                cnt = prediction_batch_size;
+            }
             candidate_queue_size -= cnt;
             if (evict_all_mode) {
                 evict_queue.enqueue_bulk(items_for_prediction, cnt);
@@ -1002,7 +1057,7 @@ class EvictionController {
                     feat = w.to_ulong();
                 }
 
-                prediction_model->emplace_back(feat, window_idx);
+                prediction_model->emplace_back(feat, window_idx, item->extra_feat);
             }
             build_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::system_clock::now() - timeBegin).count();
@@ -1060,6 +1115,7 @@ class EvictionController {
                     to_reinsert = ifReinsertItem(TTA, items_for_prediction[i]);
                 }
                 else {
+                    // heuristic_aided == 0
                     if (trained()) {
                         to_reinsert = ifReinsertItem(TTA, items_for_prediction[i]);
                     } else {
@@ -1086,9 +1142,12 @@ class EvictionController {
 
                 if (items_for_prediction[i]->get_is_sampled() == 0 && heuristic_aided != 4) { 
                 // was not accessed again
+                if (items_for_prediction[i]->getKey() == DEBUG_KEY) {
+                    XLOG_EVERY_MS(INFO, 1000) << "not sampled " << items_for_prediction[i]->getKey() << ':' << items_for_prediction[i]->access_in_windows << ',' << items_for_prediction[i]->get_is_sampled();
+                }
                     to_reinsert = true;
                     reinserted_by_reuse ++;
-                    XLOG_EVERY_MS(INFO, 1000) << "reused candidate cnt: " << reinserted_by_reuse;
+                    XLOG_EVERY_MS(INFO, 1000) << "not sampled candidate cnt: " << reinserted_by_reuse;
                 }
 
                 if(!to_reinsert) {
@@ -1107,7 +1166,7 @@ class EvictionController {
                         } else {
                             items_for_eviction[eviction_cnt++] = items_for_prediction[i];
                         }
-                        XLOG_EVERY_MS(INFO, 1000) << " pass max reinsertion: " << cid << ' ' << n_evict_by_max;
+                        XLOG_EVERY_MS(INFO, 1000) << "reach max reinsertion: " << cid << ' ' << n_evict_by_max;
                     } else {
                         items_for_eviction[eviction_cnt++] = items_for_prediction[i];
                     }
@@ -1124,7 +1183,7 @@ class EvictionController {
             adjust_threshold();
             evict_queue.enqueue_bulk(items_for_eviction, eviction_cnt);
             evict_queue_size += eviction_cnt;
-            XLOG_EVERY_MS(INFO, 1000) << "enqueue eviction cnt: " << eviction_cnt;
+            XLOG_EVERY_MS(INFO, 1000) << "evict " << eviction_cnt << " out of " << scores.size();
 
             delete[] items_for_eviction;
             delete[] items_for_prediction;
@@ -1228,7 +1287,23 @@ class EvictionController {
         tta_bucket[bucket_idx] ++;
     }
 
+    void loosen_threshold() {
+        threshold *= (1 + threshold_changing_rate);
+        n_loose ++;
+    }
+    void tighten_threshold() {
+        threshold *= (1 - threshold_changing_rate);
+        n_tight ++;
+    }
+
     void adjust_threshold() {
+        if (float(reinserted_cnt) / (examined_cnt-reinserted_cnt) < reinsertion_per_eviction)
+            threshold *= (1 + threshold_changing_rate * 0.5);
+        else
+            threshold *= (1 - threshold_changing_rate * 0.5);
+    }
+
+    void adjust_threshold_hist() {      
         if (use_rpe_running_average || use_rpe_oracle) {
             return;
         }
@@ -1304,7 +1379,7 @@ class EvictionController {
         if (repeat == max_reinsertions) {
           return false;
         }
-        adjust_threshold_();
+
         // decide whether to reinsert or evict and adjust the threshold
         if (predicted_tta < threshold) {
             // maintain the largest tta of the current search attempt
@@ -1314,8 +1389,15 @@ class EvictionController {
                     largest_tta_item = item;
                 }
             }
+            if (repeat > reinsertion_per_eviction &&
+                (repeat + 1) % std::max(int(reinsertion_per_eviction), 1) == 0) {
+                tighten_threshold();
+            }
             return true;
         } else {
+            if (repeat < reinsertion_per_eviction)
+                loosen_threshold();
+            adjust_threshold();
             return false;
         }
     }
@@ -1355,10 +1437,9 @@ class EvictionController {
                _generateTrainingData(item, current_time - item->get_past_timestamp());
             }
             // clear prev round features
-            /*if (item->getKey() == "544637") {
-                std::cout << "FEATURE of " << item->getKey() << ':' << item->access_in_windows << std::endl;
+            if (item->getKey() == DEBUG_KEY) {
+                XLOG_EVERY_MS(INFO, 1000) << item->getKey() << ':' << item->get_past_timestamp() << ',' << item->get_is_sampled();
             }
-            */
             bitset<32> w(item->access_in_windows);
             int window_idx = current_time / window_size;
             if (item->get_past_timestamp() != 0) {
@@ -1373,10 +1454,6 @@ class EvictionController {
             // update features
             w[window_idx % feature_cnt] = 1;
             item->access_in_windows = w.to_ulong();
-            /*if (item->getKey() == "544637") {
-                std::cout << "PASTTIME " << item->past_timestamp << ' ' << item->access_in_windows << std::endl;
-            }
-            */
         } else {
             item->access_in_windows = 0;
         }
@@ -1386,6 +1463,9 @@ class EvictionController {
         }
         if (use_rpe_oracle)
             addTrueTTA(item);
+        if (item->getKey() == DEBUG_KEY) {
+            XLOG_EVERY_MS(INFO, 1000) << item->getKey() << ':' << item->get_past_timestamp() << ',' << item->get_is_sampled();
+        }
     }
 
     void _generateTrainingData(Item* item, uint32_t tta_label) {
@@ -1421,8 +1501,11 @@ class EvictionController {
                         w[(window_idx + k + 1) % feature_cnt] = 1;
                 feat = w.to_ulong();
             }
+            if (!item->extra_feat) {
+                XLOG_EVERY_MS(INFO, 1000) << "no extra feat " << item->getKey() << ':' << item->extra_feat;
+            }
 
-            training_model->emplace_back_training_sample(feat, window_idx, tta_label);
+            training_model->emplace_back_training_sample(feat, window_idx, item->extra_feat, tta_label);
             training_batch_cnt += 1;
             maybe_train();
             generate_in_progress.clear();
@@ -1509,14 +1592,14 @@ class EvictionController {
     bool use_admission_threshold = true;
     bool use_oracle = false;
     int max_reinsertions = 10;
-    int training_batch_size = 131072;
-    int max_batch_size = 131072;
+    int training_batch_size = 0;
+    int max_batch_size = 10000000;
     int prediction_batch_size = 128;
     float reinsertion_per_eviction = 3;
     float rpe_target = 3;
     bool use_rpe_running_average = false;
     bool use_rpe_oracle = false;
-    bool use_largest_tta = false;
+    bool use_largest_tta = true;
     float threshold_changing_rate = 1e-4;
     float TTA_diff_scaling = 1;
     float freq_scaling = 2;
@@ -1530,12 +1613,11 @@ class EvictionController {
     float bfRatio = 0;
     float pRatio = 0.05;
     int meta_update_ssd = 0;
-    bool force_run = 0;
     int heuristic_mode = 0;
     int heuristic_aided = 0;
     int feature_cnt = 32;
     float window_size_factor = 10;
-    int training_sample_rate = 5;
+    int training_sample_rate = 1;
     int reinsert_sample_rate = 5;
     int time_unit = 1;
     

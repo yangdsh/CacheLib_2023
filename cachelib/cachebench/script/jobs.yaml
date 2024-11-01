@@ -6,8 +6,8 @@ nodes:
   #- 1/yangdsh@amd262.utah.cloudlab.us
   #- 1/yangdsh@amd276.utah.cloudlab.us
   - 12/localhost
-  #- 4/node1
-  #- 4/node2
+  - 12/node1
+  - 12/node2
 
 cache_types:
   #- LRU*
@@ -29,14 +29,15 @@ trace_files:
   #- ts_with_ssd.tr
   #- wiki_with_ssd.tr
   #- youtube_with_ssd.tr
-  - memc_200m.tr
+  #- memc_200m.tr
   #- config_kvcache.tr
-  - wiki2019_remapped.tr
+  #- wiki2019_remapped.tr
   #- twitter45_with_ssd.tr
   #- fb_follower_fbobj.tr
   #- fb_leader_assoc.tr
   #- twitter_52.tr
-  - youtube.tr
+  #- youtube.tr
   #- youtube_em.tr
-  - ts_rehash_1b.tr
+  #- ts_rehash_1b.tr
   #- ntg1_200m.tr
+  - wiki_page30.tr

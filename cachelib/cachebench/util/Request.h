@@ -143,7 +143,7 @@ struct Request {
 
   // Feature map for this request sample, which is used for for admission
   // policy: feature name --> feature value
-  const std::unordered_map<std::string, std::string> admFeatureMap;
+  std::unordered_map<std::string, std::string> admFeatureMap;
 
   // Custom timestamp in second associated with the request
   // May not have to be the same as wall clock

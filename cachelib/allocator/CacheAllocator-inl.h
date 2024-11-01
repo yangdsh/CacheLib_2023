@@ -325,12 +325,14 @@ typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::allocate(PoolId poolId,
                                      typename Item::Key key,
                                      uint32_t size,
+                                     ObjectInfo& objInfo,
+                                     ObjectInfo& objInfoRet,
                                      uint32_t ttlSecs,
                                      uint32_t creationTime) {
   if (creationTime == 0) {
     creationTime = util::getCurrentTimeSec();
   }
-  return allocateInternal(poolId, key, size, creationTime,
+  return allocateInternal(poolId, key, size, objInfo, objInfoRet, creationTime,
                           ttlSecs == 0 ? 0 : creationTime + ttlSecs);
 }
 
@@ -345,6 +347,8 @@ typename CacheAllocator<CacheTrait>::WriteHandle
 CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
                                              typename Item::Key key,
                                              uint32_t size,
+                                             ObjectInfo& objInfo,
+                                             ObjectInfo& objInfoRet,
                                              uint32_t creationTime,
                                              uint32_t expiryTime,
                                              bool fromBgThread) {
@@ -370,7 +374,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
   }
 
   if (memory == nullptr) {
-    memory = findEviction(pid, cid);
+    memory = findEviction(pid, cid, objInfoRet);
   }
 
   WriteHandle handle;
@@ -385,6 +389,16 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
     };
 
     handle = acquire(new (memory) Item(key, size, creationTime, expiryTime));
+    {
+      if (objInfo.key != -1) {
+        handle->past_timestamp = objInfo.past_timestamp;
+        handle->access_in_windows = objInfo.feat;
+      } else {
+        handle->past_timestamp = 0;
+        handle->access_in_windows = 0;
+        // fresh item
+      }
+    }
     if (handle) {
       handle.markNascent();
       (*stats_.fragmentationSize)[pid][cid].add(
@@ -1304,6 +1318,7 @@ void CacheAllocator<CacheTrait>::initEC(EvictionController<CacheTrait>* ec, size
     if (ec->training_batch_size > ec->max_batch_size)
       ec->training_batch_size = ec->max_batch_size;
     ec->params["batch_size"] = to_string(ec->training_batch_size);
+    ec->training_model = ec->build_ml_model();
   }
 }
 
@@ -1332,7 +1347,7 @@ template <typename CacheTrait>
 void CacheAllocator<CacheTrait>::enqueueCandidateEC(EvictionController<CacheTrait>* ec, MMContainer& mmContainer) {
   int enqueue_batch_size = ec->prediction_batch_size;
   if (ec->candidate_queue_size < enqueue_batch_size && ec->evict_queue_size < enqueue_batch_size) {
-    XLOG_EVERY_MS(INFO, 1000) << "cq/eq before enqueue: " << ec->candidate_queue_size << ' ' << ec->evict_queue_size;
+    // XLOG_EVERY_MS(INFO, 1000) << "cq/eq before enqueue: " << ec->candidate_queue_size << ' ' << ec->evict_queue_size;
     int i = 0;
     Item** items_for_prediction = new Item*[enqueue_batch_size];
     Item** items_for_eviction = new Item*[enqueue_batch_size];
@@ -1526,7 +1541,7 @@ CacheAllocator<CacheTrait>::getNextCandidate(PoolId pid,
 
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::Item*
-CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
+CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid, ObjectInfo& objInfoRet) {
   // Keep searching for a candidate until we were able to evict it
   // or until the search limit has been exhausted
   unsigned int searchTries = 0;
@@ -1554,6 +1569,9 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
                            candidate->getConfiguredTTL().count());
     }
 
+    objInfoRet.key = ObjectInfo::key_to_int(toRecycle->getKey().toString());
+    objInfoRet.past_timestamp = toRecycle->past_timestamp;
+    objInfoRet.feat = toRecycle->access_in_windows;
     // check if by releasing the item we intend to, we actually
     // recycle the candidate.
     auto ret = releaseBackToAllocator(*candidate, RemoveContext::kEviction,
@@ -3002,9 +3020,13 @@ CacheAllocator<CacheTrait>::allocateNewItemForOldItem(const Item& oldItem) {
 
   // Set up the destination for the move. Since oldItem would have the moving
   // bit set, it won't be picked for eviction.
+    ObjectInfo objInfo(-1, oldItem.access_in_windows, oldItem.past_timestamp);
+
   auto newItemHdl = allocateInternal(allocInfo.poolId,
                                      oldItem.getKey(),
                                      oldItem.getSize(),
+                                     objInfo,
+                                     objInfo,
                                      oldItem.getCreationTime(),
                                      oldItem.getExpiryTime(),
                                      false);

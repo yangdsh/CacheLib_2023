@@ -564,7 +564,33 @@ class CacheStressor : public Stressor {
 #endif
 
     ++stats.set;
-    auto it = cache_->allocate(pid, *key, size, ttlSecs);
+
+    ObjectInfo objInfo;
+    ObjectInfo objInfoRet;
+    if (!useNVM) {
+      uint64_t key_int = ObjectInfo::key_to_int(*key);
+      //std::unique_lock<folly::SharedMutex>{meta_mutexs_[key_int % 1024]};
+      std::lock_guard<std::mutex> l(metaMutex_[key_int % 1024]);
+      auto it = key_to_meta[key_int % 1024].find(key_int);
+      if (it != key_to_meta[key_int % 1024].end()) {
+          objInfo = it->second;
+      }
+    }
+
+    auto it = cache_->allocate(pid, *key, size, objInfo, objInfoRet, ttlSecs);
+
+    if (!useNVM) {
+      if (objInfoRet.key != -1) {
+        //std::unique_lock<folly::SharedMutex>{meta_mutexs_[objInfoRet.key % 1024]};
+        std::lock_guard<std::mutex> l(metaMutex_[objInfoRet.key % 1024]);
+        auto objInfoRet_entry = key_to_meta[objInfoRet.key % 1024].find(objInfoRet.key);
+        if (objInfoRet_entry != key_to_meta[objInfoRet.key % 1024].end())
+          objInfoRet_entry->second = objInfoRet;
+        else
+          key_to_meta[objInfoRet.key % 1024].insert({objInfoRet.key, objInfoRet});
+      }
+    }
+
     if (it == nullptr) {
       ++stats.setFailure;
       return OpResultType::kSetFailure;
@@ -573,6 +599,15 @@ class CacheStressor : public Stressor {
 #ifdef TRUE_TTA
       it->next_timestamp = nextTime;
 #endif
+      strcpy(it->extra_feat, "");
+      if (featureMap.find("extra_feat") != featureMap.end()) {
+        auto extra_feat = featureMap.find("extra_feat")->second;
+        if (extra_feat.size() >= 255) {
+          XLOG(ERR) << "extra_feat too long: " << extra_feat;
+        }
+        strcpy(it->extra_feat, extra_feat.c_str());
+      }
+
       populateItem(it, itemValue);
       cache_->insertOrReplace(it);
       return OpResultType::kSetSuccess;
@@ -691,6 +726,10 @@ class CacheStressor : public Stressor {
 
   // Whether flash cache has been warmed up
   bool hasNvmCacheWarmedUp_{false};
+
+  std::unordered_map<uint64_t, ObjectInfo> key_to_meta[1024];
+  std::array<folly::SharedMutex, 1024> meta_mutexs_;
+  mutable std::mutex metaMutex_[1024];
 };
 } // namespace cachebench
 } // namespace cachelib

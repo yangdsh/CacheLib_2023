@@ -127,7 +127,16 @@ class Cache {
   WriteHandle allocate(PoolId pid,
                        folly::StringPiece key,
                        size_t size,
+                       ObjectInfo& objInfo, ObjectInfo& objInfoRet,
                        uint32_t ttlSecs = 0);
+
+  WriteHandle allocate(PoolId pid,
+                       folly::StringPiece key,
+                       size_t size,
+                       uint32_t ttlSecs = 0) {
+    ObjectInfo objInfo, objInfoRet;
+    allocate(pid, key, CacheValue::getSize(size), objInfo, objInfoRet, ttlSecs);
+  }
 
   // inserts the item into the cache and tracks it.
   WriteHandle insertOrReplace(WriteHandle& handle);
